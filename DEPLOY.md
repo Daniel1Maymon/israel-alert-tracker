@@ -27,6 +27,12 @@ git push -u origin main
 
 ---
 
+## A note on the frontend
+
+There is no separate frontend deployment. The UI (`templates/index.html`) is a server-rendered Jinja template served by Flask at `/`. When you deploy to Railway, the frontend comes along automatically as part of the same service — no CDN, no build step, no Vercel needed.
+
+---
+
 ## 2. Deploy to Railway
 
 ### Step 1 — Create a Railway account
