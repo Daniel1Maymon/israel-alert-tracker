@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tzeva Adom Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .5px; }
+    #dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      transition: background .3s;
+      flex-shrink: 0;
+    }
+    #dot.connected    { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    #dot.disconnected { background: #f44336; box-shadow: 0 0 6px #f44336; }
+    #dot.flash        { background: #ff9800; box-shadow: 0 0 14px #ff9800; }
+    #status-text { font-size: .8rem; color: #888; }
+
+    #total { font-size: .8rem; color: #666; }
+
+    /* push total + lang button to the far end */
+    #spacer { flex: 1; }
+
+    #lang-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #ccc;
+      font-size: .8rem;
+      cursor: pointer;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    #lang-btn:hover { background: #3a3a3a; }
+
+    /* ── flash banner ── */
+    #banner {
+      display: none;
+      padding: 14px 20px;
+      font-size: .95rem;
+      font-weight: 600;
+      text-align: center;
+      animation: slidein .2s ease;
+      flex-shrink: 0;
+    }
+    #banner.alert   { background: #b71c1c; color: #fff; }
+    #banner.warning { background: #e65100; color: #fff; }
+    @keyframes slidein { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; } }
+
+    /* ── table ── */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .875rem;
+    }
+
+    thead th {
+      text-align: start;
+      padding: 8px 12px;
+      color: #666;
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      border-bottom: 1px solid #2a2a2a;
+      position: sticky;
+      top: 0;
+      background: #0f0f0f;
+      z-index: 1;
+    }
+    thead th.num { text-align: end; }
+
+    /* RTL: flip the row accent border */
+    [dir="ltr"] tbody tr.ALERT          { border-left:  3px solid #f44336; }
+    [dir="ltr"] tbody tr.SYSTEM_MESSAGE { border-left:  3px solid #ff9800; }
+    [dir="rtl"] tbody tr.ALERT          { border-right: 3px solid #f44336; }
+    [dir="rtl"] tbody tr.SYSTEM_MESSAGE { border-right: 3px solid #ff9800; }
+
+    tbody tr {
+      border-bottom: 1px solid #1e1e1e;
+      animation: rowin .2s ease;
+    }
+    @keyframes rowin { from { opacity: 0; background: #2a1a00; } to { opacity: 1; } }
+    tbody tr.new-flash { background: #1a1200 !important; }
+
+    td { padding: 10px 12px; vertical-align: top; }
+
+    td.col-num     { color: #555; font-size: .75rem; width: 48px; text-align: end; font-variant-numeric: tabular-nums; }
+    td.col-type    { width: 110px; }
+    td.col-time    { white-space: nowrap; color: #777; font-size: .78rem; width: 160px; font-variant-numeric: tabular-nums; }
+    td.col-elapsed { white-space: nowrap; font-size: .82rem; width: 100px; font-variant-numeric: tabular-nums; font-family: monospace; }
+    td.col-source  { white-space: nowrap; width: 90px; font-size: .72rem; }
+    .src-tzevaadom { color: #888; }
+    .src-oref      { color: #4fc3f7; font-weight: 600; }
+    td.col-cities  { color: #ccc; line-height: 1.6; }
+    td.col-areas   { font-size: .76rem; color: #888; line-height: 1.6; min-width: 120px; }
+
+    /* Hebrew badge: no uppercase / letter-spacing */
+    [dir="rtl"] .badge { text-transform: none; letter-spacing: 0; }
+
+    .badge {
+      display: inline-block;
+      font-size: .68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .badge-alert   { background: #f44336; color: #fff; }
+    .badge-warning { background: #ff9800; color: #000; }
+    .badge-drill   { background: #2196f3; color: #fff; }
+
+[dir="ltr"] tbody tr.is-clear { border-left-color:  #4caf50; }
+    [dir="rtl"] tbody tr.is-clear { border-right-color: #4caf50; }
+    tbody tr.is-clear td.col-cities .msg-title,
+    tbody tr.is-clear td.col-cities .msg-body { color: #81c784; }
+
+    .cities-text { font-size: .82rem; }
+    .msg-title   { font-weight: 600; color: #ddd; }
+    .msg-body    { font-size: .8rem; color: #999; margin-top: 2px; }
+
+    /* scrollable cities list — row stays compact */
+    .cities-scroll {
+      max-height: 56px;
+      overflow-y: auto;
+      font-size: .8rem;
+      color: #bbb;
+      line-height: 1.7;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+    .cities-scroll::-webkit-scrollbar { width: 4px; }
+    .cities-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    .city-zone { color: #555; font-size: .75em; }
+
+    /* ── search toolbar ── */
+    #toolbar {
+      padding: 10px 20px;
+      background: #141414;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+    #search {
+      width: 100%;
+      max-width: 360px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      font-size: .875rem;
+      outline: none;
+    }
+    #search:focus { border-color: #555; }
+    #search::placeholder { color: #555; }
+
+    #no-results { text-align: center; padding: 40px 0; color: #444; display: none; }
+    #empty { text-align: center; padding: 60px 0; color: #444; }
+
+    /* ── area filter bar ── */
+    #area-filter {
+      padding: 8px 20px;
+      background: #141414;
+      border-bottom: 1px solid #222;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .area-chip {
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #1e1e1e;
+      color: #777;
+      font-size: .72rem;
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .area-chip:hover { background: #2a2a2a; color: #bbb; border-color: #444; }
+    .area-chip.active { background: #2d2d2d; color: #fff; border-color: #777; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="dot"></div>
+  <h1 data-i18n="title">Tzeva Adom Monitor</h1>
+  <span id="status-text" data-i18n="connecting">connecting…</span>
+  <div id="spacer"></div>
+  <span id="total"></span>
+  <button id="lang-btn">עברית</button>
+</header>
+
+<div id="banner"></div>
+
+<div id="toolbar">
+  <input id="search" type="search" data-i18n-placeholder="search_placeholder" placeholder="Search city…" />
+</div>
+
+<div id="area-filter"></div>
+
+<main>
+  <table id="alerts-table">
+    <thead>
+      <tr>
+        <th class="num">#</th>
+        <th data-i18n="col-type">Type</th>
+        <th data-i18n="col-cities">Cities / Message</th>
+        <th data-i18n="col-areas">Areas</th>
+        <th data-i18n="col-time">Time</th>
+        <th data-i18n="col-elapsed">Elapsed</th>
+        <th data-i18n="col-source">Source</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr id="empty-row">
+        <td colspan="7"><div id="empty" data-i18n="waiting">Waiting for alerts…</div></td>
+      </tr>
+      <tr id="no-results-row" style="display:none">
+        <td colspan="7"><div id="no-results" data-i18n="no_results" style="display:block">No matching cities</div></td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+
+<script>
+  // ── i18n ────────────────────────────────────────────────────────────────
+  const I18N = {
+    en: {
+      title:       'Tzeva Adom Monitor',
+      connecting:  'connecting…',
+      live:        'Live',
+      disconnected:'Disconnected',
+      'col-type':  'Type',
+      'col-cities':'Cities / Message',
+      'col-areas': 'Areas',
+      'col-time':  'Time',
+      'col-elapsed':'Elapsed',
+      'col-source': 'Source',
+      all:               'All',
+      waiting:           'Waiting for alerts…',
+      no_results:        'No matching cities',
+      search_placeholder:'Search city…',
+      alerts:      (n) => `${n} alert${n !== 1 ? 's' : ''}`,
+      badge_alert:  'Alert',
+      badge_warning:'Warning',
+      badge_drill:  'Drill',
+      banner_alert: (cities) => `🚨 ALERT — ${cities}`,
+      banner_warn:  (title)  => `⚠️ ${title || 'System Message'}`,
+      msg_key:      { title: 'titleEn', body: 'bodyEn' },
+      lang_switch:  'עברית',
+    },
+    he: {
+      title:       'מוניטור צבע אדום',
+      connecting:  'מתחבר…',
+      live:        'חי',
+      disconnected:'מנותק',
+      'col-type':  'סוג',
+      'col-cities':'ערים / הודעה',
+      'col-areas': 'אזורים',
+      'col-time':  'שעה',
+      'col-elapsed':'זמן שחלף',
+      'col-source': 'מקור',
+      all:               'הכל',
+      waiting:           'ממתין להתרעות…',
+      no_results:        'לא נמצאו ערים תואמות',
+      search_placeholder:'חיפוש עיר…',
+      alerts:      (n) => `${n} התרעות`,
+      badge_alert:  'התרעה',
+      badge_warning:'אזהרה',
+      badge_drill:  'תרגיל',
+      banner_alert: (cities) => `🚨 התרעה — ${cities}`,
+      banner_warn:  (title)  => `⚠️ ${title || 'הודעת מערכת'}`,
+      msg_key:      { title: 'titleHe', body: 'bodyHe' },
+      lang_switch:  'English',
+    },
+  };
+
+  let lang = localStorage.getItem('lang') || 'he';
+  const t = (key, ...args) => {
+    const v = I18N[lang][key];
+    return typeof v === 'function' ? v(...args) : v;
+  };
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+  const html       = document.documentElement;
+  const dot        = document.getElementById('dot');
+  const statusText = document.getElementById('status-text');
+  const banner     = document.getElementById('banner');
+  const tbody      = document.getElementById('tbody');
+  const totalEl    = document.getElementById('total');
+  const emptyRow   = document.getElementById('empty-row');
+  const langBtn    = document.getElementById('lang-btn');
+  const searchEl     = document.getElementById('search');
+  const noResultsRow = document.getElementById('no-results-row');
+  const areaFilterEl = document.getElementById('area-filter');
+
+  // ── language switch ──────────────────────────────────────────────────────
+  function applyLang() {
+    html.lang = lang;
+    html.dir  = lang === 'he' ? 'rtl' : 'ltr';
+    langBtn.textContent = t('lang_switch');
+
+    // update static i18n elements
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+
+    // update status text
+    const cur = dot.className;
+    if (cur === 'connected')    statusText.textContent = t('live');
+    else if (cur === 'disconnected') statusText.textContent = t('disconnected');
+    else statusText.textContent = t('connecting');
+
+    // update total
+    if (counter > 0) totalEl.textContent = t('alerts', counter);
+
+    // update search placeholder
+    searchEl.placeholder = t('search_placeholder');
+
+    // re-render every row's content cell
+    tbody.querySelectorAll('tr[data-time]').forEach(tr => {
+      renderRowContent(tr, tr._type, tr._data);
+    });
+
+    // re-render area chips in new language
+    renderAreaChips();
+
+    // re-filter with current search term in new language
+    filterRows(searchEl.value);
+  }
+
+  langBtn.addEventListener('click', () => {
+    lang = lang === 'en' ? 'he' : 'en';
+    localStorage.setItem('lang', lang);
+    applyLang();
+  });
+
+  // ── elapsed ──────────────────────────────────────────────────────────────
+  let counter = 0;
+  const elapsedCells = [];
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function elapsedStr(receivedAt) {
+    const secs = Math.max(0, Math.floor((Date.now() - receivedAt) / 1000));
+    return `${pad(Math.floor(secs/3600))}:${pad(Math.floor((secs%3600)/60))}:${pad(secs%60)}`;
+  }
+
+  setInterval(() => {
+    elapsedCells.forEach(({ el, receivedAt }) => {
+      el.textContent = elapsedStr(receivedAt);
+    });
+  }, 1000);
+
+  // ── status ───────────────────────────────────────────────────────────────
+  function setStatus(s) {
+    dot.className = s;
+    statusText.textContent = s === 'connected' ? t('live')
+                           : s === 'disconnected' ? t('disconnected')
+                           : t('connecting');
+  }
+
+  // ── banner ───────────────────────────────────────────────────────────────
+  function flashBanner(text, type) {
+    banner.textContent   = text;
+    banner.className     = type;
+    banner.style.display = 'block';
+    clearTimeout(banner._t);
+    banner._t = setTimeout(() => { banner.style.display = 'none'; }, 6000);
+  }
+
+  // ── time format ──────────────────────────────────────────────────────────
+  function fmt(unixTs) {
+    return new Date(Number(unixTs) * 1000)
+      .toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour12: false });
+  }
+
+  // ── render the content cell of a row (language-aware) ───────────────────
+  function renderRowContent(tr, type, data) {
+    const cell      = tr.querySelector('.col-cities');
+    const areasCell = tr.querySelector('.col-areas');
+    const badge     = tr.querySelector('.badge');
+
+    if (type === 'ALERT') {
+      badge.textContent = data.isDrill ? t('badge_drill') : t('badge_alert');
+      const names = (data.cities || []).map(name => {
+        const c = nameToZone[name];
+        const zone = c ? (lang === 'he' ? c.zone : c.zone_en) : null;
+        return zone ? `${name} <span class="city-zone">(${zone})</span>` : name;
+      }).join(' · ') || '—';
+      cell.innerHTML = `<div class="cities-scroll">${names}</div>`;
+      tr.dataset.citiesText = (data.cities || []).join(' ').toLowerCase();
+      const alertZoneEns = getZoneEns(type, data);
+      tr.dataset.areaEn = alertZoneEns.join('|');
+      areasCell.textContent = alertZoneEns.map(z => lang === 'he' ? (zoneEnToZoneHe[z] || z) : z).join(' · ');
+      updateKnownAreas(alertZoneEns);
+    } else {
+      const isClear = (data.titleHe || '').includes('יציאה מהמרחב המוגן')
+                   || (data.bodyHe  || '').includes('יציאה מהמרחב המוגן')
+                   || (data.titleEn || '').toLowerCase().includes('leaving the protected space')
+                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space');
+      tr.classList.toggle('is-clear', isClear);
+      badge.className = 'badge badge-warning';
+      badge.textContent = t('badge_warning');
+
+      const titleKey  = I18N[lang].msg_key.title;
+      const bodyKey   = I18N[lang].msg_key.body;
+      const cityIds   = typeof data.citiesIds === 'string'
+                          ? JSON.parse(data.citiesIds) : (data.citiesIds || []);
+      const cityNames = resolveCityIds(cityIds);
+      cell.innerHTML = `<span class="msg-title">${data[titleKey] || ''}</span>
+                        <div class="msg-body">${data[bodyKey] || ''}</div>
+                        ${cityNames ? `<div class="cities-scroll" style="margin-top:4px">${cityNames}</div>` : ''}`;
+      tr.dataset.citiesText = cityNames.toLowerCase();
+      const sysZoneEns = getZoneEns(type, data);
+      tr.dataset.areaEn = sysZoneEns.join('|');
+      areasCell.textContent = sysZoneEns.map(z => lang === 'he' ? (zoneEnToZoneHe[z] || z) : z).join(' · ');
+      updateKnownAreas(sysZoneEns);
+    }
+  }
+
+  // ── add row ──────────────────────────────────────────────────────────────
+  function addRow(type, data, isLive = true, source = 'tzevaadom') {
+    emptyRow.style.display = 'none';
+    counter++;
+    totalEl.textContent = t('alerts', counter);
+
+    const isDrill    = type === 'ALERT' && data.isDrill;
+    const badgeClass = isDrill ? 'badge-drill' : type === 'ALERT' ? 'badge-alert' : 'badge-warning';
+    const receivedAt = Number(data.time) * 1000;
+
+    const tr = document.createElement('tr');
+    tr.className    = type;
+    tr.dataset.time = Number(data.time);
+    tr._type        = type;   // store for re-render on lang switch
+    tr._data        = data;
+
+    tr.innerHTML = `
+      <td class="col-num">${counter}</td>
+      <td class="col-type"><span class="badge ${badgeClass}"></span></td>
+      <td class="col-cities"></td>
+      <td class="col-areas"></td>
+      <td class="col-time">${fmt(data.time)}</td>
+      <td class="col-elapsed"></td>
+      <td class="col-source"><span class="src-${source}">${source}</span></td>`;
+
+    renderRowContent(tr, type, data);
+
+    const elCell = tr.querySelector('.col-elapsed');
+    elCell.textContent = elapsedStr(receivedAt);
+    elapsedCells.push({ el: elCell, receivedAt });
+
+    tbody.appendChild(tr);
+    sortTable();
+    filterRows(searchEl.value);
+
+    if (isLive) {
+      dot.classList.add('flash');
+      setTimeout(() => dot.classList.remove('flash'), 800);
+      tr.classList.add('new-flash');
+      setTimeout(() => tr.classList.remove('new-flash'), 1200);
+
+      if (type === 'ALERT' && !isDrill)
+        flashBanner(t('banner_alert', (data.cities || []).slice(0, 4).join(', ')), 'alert');
+      else if (type === 'SYSTEM_MESSAGE')
+        flashBanner(t('banner_warn', data[I18N[lang].msg_key.title]), 'warning');
+    }
+  }
+
+  // ── search ───────────────────────────────────────────────────────────────
+  function filterRows(query) {
+    const q = query.trim().toLowerCase();
+    let visible = 0;
+    tbody.querySelectorAll('tr[data-time]').forEach(tr => {
+      const textMatch = !q || (tr.dataset.citiesText || '').includes(q);
+      const areaMatch = !activeAreaEn || (tr.dataset.areaEn || '').split('|').includes(activeAreaEn);
+      const match = textMatch && areaMatch;
+      tr.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    noResultsRow.style.display = ((q || activeAreaEn) && visible === 0) ? '' : 'none';
+  }
+
+  searchEl.addEventListener('input', () => {
+    localStorage.setItem('search', searchEl.value);
+    filterRows(searchEl.value);
+  });
+
+  // ── sort ─────────────────────────────────────────────────────────────────
+  function sortTable() {
+    const rows = [...tbody.querySelectorAll('tr[data-time]')];
+    rows.sort((a, b) => Number(b.dataset.time) - Number(a.dataset.time));
+    rows.forEach(r => tbody.appendChild(r));
+  }
+
+  // ── city lookup ──────────────────────────────────────────────────────────
+  let cityLookup   = {};   // "id"          -> {name, name_en, zone, zone_en, ...}
+  let nameToZone   = {};   // hebrew name   -> city record
+  let zoneEnToZoneHe = {}; // zone_en       -> zone (Hebrew)
+
+  fetch('/cities')
+    .then(r => r.json())
+    .then(data => {
+      cityLookup = data;
+      nameToZone = {};
+      zoneEnToZoneHe = {};
+      Object.values(data).forEach(c => {
+        if (c.name  && c.zone_en) nameToZone[c.name] = c;
+        if (c.zone_en && c.zone)  zoneEnToZoneHe[c.zone_en] = c.zone;
+      });
+      // Re-render any rows that arrived before city data was ready
+      tbody.querySelectorAll('tr[data-time]').forEach(tr => {
+        renderRowContent(tr, tr._type, tr._data);
+      });
+    });
+
+  // Returns stable English zone names for a row (used for filtering & knownAreas).
+  function getZoneEns(type, data) {
+    const zones = new Set();
+    if (type === 'ALERT') {
+      (data.cities || []).forEach(name => {
+        const c = nameToZone[name];
+        if (c) zones.add(c.zone_en);
+      });
+    } else {
+      const ids = typeof data.citiesIds === 'string'
+        ? JSON.parse(data.citiesIds) : (data.citiesIds || []);
+      ids.forEach(id => {
+        const c = cityLookup[String(id)];
+        if (c && c.zone_en) zones.add(c.zone_en);
+      });
+    }
+    return [...zones];
+  }
+
+  // Returns display text in current language.
+  function getZones(type, data) {
+    return getZoneEns(type, data)
+      .map(z => lang === 'he' ? (zoneEnToZoneHe[z] || z) : z)
+      .join(' · ');
+  }
+
+  // ── area filter ──────────────────────────────────────────────────────────
+  let activeAreaEn = localStorage.getItem('activeAreaEn') || null;  // zone_en of selected chip, null = All
+  let knownAreas   = new Map();            // zone_en -> {zone_en, zone}
+
+  function renderAreaChips() {
+    areaFilterEl.innerHTML = '';
+    if (knownAreas.size === 0) return;
+
+    const allChip = document.createElement('button');
+    allChip.className = 'area-chip' + (activeAreaEn === null ? ' active' : '');
+    allChip.textContent = t('all');
+    allChip.addEventListener('click', () => selectArea(null));
+    areaFilterEl.appendChild(allChip);
+
+    const sorted = [...knownAreas.values()].sort((a, b) =>
+      (lang === 'he' ? a.zone : a.zone_en).localeCompare(lang === 'he' ? b.zone : b.zone_en)
+    );
+    sorted.forEach(area => {
+      const chip = document.createElement('button');
+      chip.className = 'area-chip' + (activeAreaEn === area.zone_en ? ' active' : '');
+      chip.textContent = lang === 'he' ? area.zone : area.zone_en;
+      chip.addEventListener('click', () => selectArea(area.zone_en));
+      areaFilterEl.appendChild(chip);
+    });
+  }
+
+  function selectArea(zoneEn) {
+    activeAreaEn = zoneEn;
+    if (zoneEn === null) localStorage.removeItem('activeAreaEn');
+    else localStorage.setItem('activeAreaEn', zoneEn);
+    renderAreaChips();
+    filterRows(searchEl.value);
+  }
+
+  function updateKnownAreas(zoneEns) {
+    let changed = false;
+    zoneEns.forEach(zEn => {
+      if (!knownAreas.has(zEn)) {
+        knownAreas.set(zEn, { zone_en: zEn, zone: zoneEnToZoneHe[zEn] || zEn });
+        changed = true;
+      }
+    });
+    if (changed) renderAreaChips();
+  }
+
+  function resolveCityIds(ids) {
+    return (ids || []).map(id => {
+      const c = cityLookup[String(id)];
+      if (!c) return String(id);
+      const name = lang === 'he' ? c.name : c.name_en;
+      const zone = lang === 'he' ? c.zone : c.zone_en;
+      return zone ? `${name} <span class="city-zone">(${zone})</span>` : name;
+    }).join(' · ');
+  }
+
+  // ── polling ──────────────────────────────────────────────────────────────
+  let latestTime = 0;
+
+  function poll() {
+    const url = latestTime ? `/history?since=${latestTime}` : '/history';
+    fetch(url)
+      .then(r => {
+        setStatus('connected');
+        return r.json();
+      })
+      .then(rows => {
+        rows.forEach(r => {
+          try {
+            const raw  = JSON.parse(r.raw_data);
+            const isNew = latestTime > 0;
+            addRow(raw.type, raw.data, isNew, raw.source || r.source || 'tzevaadom');
+            if (Number(raw.data.time) > latestTime)
+              latestTime = Number(raw.data.time);
+          } catch {}
+        });
+        // after first load, track the max time we've seen
+        if (latestTime === 0 && rows.length) {
+          latestTime = Math.max(...rows.map(r => {
+            try { return Number(JSON.parse(r.raw_data).data.time); } catch { return 0; }
+          }));
+        }
+      })
+      .catch(() => setStatus('disconnected'));
+  }
+
+  // ── restore state & apply lang on init ──────────────────────────────────
+  const savedSearch = localStorage.getItem('search') || '';
+  if (savedSearch) searchEl.value = savedSearch;
+  applyLang();   // apply saved language (sets dir, updates all i18n elements)
+
+  poll();                          // load history immediately
+  setInterval(poll, 2000);         // then poll every 2 seconds
+</script>
+</body>
+</html>
