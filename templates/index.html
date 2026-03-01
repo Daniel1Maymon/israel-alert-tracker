@@ -683,6 +683,7 @@
 
   // ── add row ──────────────────────────────────────────────────────────────
   const receivedIds = new Set();   // dedup across SSE + polling
+  let _batchMode = false;          // true during initial bulk history load; defers sort+filter
 
   function addRow(type, data, isLive = true, source = 'tzevaadom', zoneEnStr = '') {
     // dedup: same event can arrive via SSE and then again via the next poll
@@ -728,9 +729,11 @@
     elapsedCells.push({ el: elCell, receivedAt });
 
     tbody.appendChild(tr);
-    sortTable();
-    if (isLive) currentPage = 1;
-    filterAndPage(searchEl.value);
+    if (!_batchMode) {
+      sortTable();
+      if (isLive) currentPage = 1;
+      filterAndPage(searchEl.value);
+    }
 
     if (isLive) {
       dot.classList.add('flash');
@@ -1097,6 +1100,8 @@
       })
       .then(rows => {
         const isNew = historyLoaded;   // never live until first load is done
+        const isBatch = !historyLoaded && rows.length > 1;
+        if (isBatch) _batchMode = true;
         rows.forEach(r => {
           try {
             const raw = JSON.parse(r.raw_data);
@@ -1105,6 +1110,11 @@
               latestTime = Number(raw.data.time);
           } catch {}
         });
+        if (isBatch) {
+          _batchMode = false;
+          sortTable();
+          filterAndPage(searchEl.value);
+        }
         if (!historyLoaded) {
           historyLoaded = true;
           if (!latestTime && rows.length)

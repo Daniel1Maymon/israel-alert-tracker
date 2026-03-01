@@ -95,7 +95,7 @@ def history():
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM alerts ORDER BY time ASC"
+                "SELECT * FROM (SELECT * FROM alerts ORDER BY time DESC LIMIT 100) ORDER BY time ASC"
             ).fetchall()
     return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
