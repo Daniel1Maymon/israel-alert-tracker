@@ -41,98 +41,136 @@ Issued ~2 minutes before sirens (missile detected) or after an event ends.
 }
 ```
 
-**All-clear detection**: a `SYSTEM_MESSAGE` is classified as "all clear" (green highlight in UI) when `titleHe` or `bodyHe` contains `יציאה מהמרחב המוגן`, or the English equivalents contain `leaving the protected space`.
+**All-clear detection**: classified as "leaving the protected space" when `titleHe` or `bodyHe` contains `יציאה מהמרחב המוגן`, or the English fields contain `leaving the protected space`.
 
 ### Oref REST format
-When the backup poller activates, it normalises the government API response into the same `ALERT` structure before saving/broadcasting:
-
-```json
-{
-  "id": "134167640540000000",
-  "data": ["גאליה", "כפר הנגיד"],
-  "cat": "1"
-}
-```
-
-Becomes:
-```json
-{
-  "type": "ALERT",
-  "data": {
-    "notificationId": "134167640540000000",
-    "time": <unix_now>,
-    "threat": 1,
-    "isDrill": false,
-    "cities": ["גאליה", "כפר הנגיד"]
-  }
-}
-```
+When the backup poller activates, it normalises the government API response into the same `ALERT` structure before saving/broadcasting.
 
 ---
 
-## Database Schema
+## Ingest pipeline (server-side, per event)
 
-**Table: `alerts`**
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | INTEGER PK | Auto-increment |
-| `notification_id` | TEXT UNIQUE | Dedup key; UUID from tzevaadom, numeric string from oref |
-| `type` | TEXT | `ALERT` or `SYSTEM_MESSAGE` |
-| `time` | INTEGER | Unix timestamp from the alert payload |
-| `threat` | INTEGER | Threat category (0 = rockets); ALERT only |
-| `is_drill` | INTEGER | 0/1 boolean; ALERT only |
-| `cities` | TEXT | JSON array of city name strings; ALERT only |
-| `title_en` | TEXT | English title; SYSTEM_MESSAGE only |
-| `body_en` | TEXT | English body; SYSTEM_MESSAGE only |
-| `areas_ids` | TEXT | JSON array of area IDs; SYSTEM_MESSAGE only |
-| `raw_data` | TEXT | Full original JSON payload |
-| `source` | TEXT | `tzevaadom` or `oref` |
-| `received_at` | TEXT | `datetime('now')` at insert time |
+```
+Inbound event (WebSocket or REST)
+        │
+        ▼
+resolve_zones(type, data)
+  ALERT:          city name → name_to_zone dict → zone_en
+  SYSTEM_MESSAGE: citiesId  → city_lookup dict  → zone_en
+        │
+        ▼
+save_alert() — INSERT OR IGNORE on notification_id
+  stores: type, time, zone_en, cities/title_en/body_en, raw_data, source
+        │
+        ▼ (only if INSERT succeeded, i.e. new row)
+update_shelter_intervals()
+  ALERT (non-drill): open new interval for each zone (if none open)
+  "יציאה" message:   close open interval for each zone
+        │
+        ▼
+broadcast() — push enriched JSON to all SSE subscribers
+  payload includes zone_en field
+```
 
 ---
 
 ## Frontend Data Flow
 
-```
-Page load
-  │
-  ├─► GET /cities → cityLookup dict (one-time, held in memory)
-  │
-  └─► GET /history (no since) → last 100 rows, sorted DESC by time
-            │
-            └─► rows rendered; latestTime = max(data.time)
+### Initial page load
 
+```
+Page open
+  │
+  ├─► EventSource /stream  (SSE — persistent connection for live push)
+  │
+  ├─► GET /history         (all rows, ASC by time; each row includes zone_en)
+  │       │
+  │       └─► addRow() for each row → renderRowContent() → sortTable()
+  │           latestTime = max(data.time)
+  │           historyLoaded = true
+  │           fetchShelterState()   ← hits /shelter for selected areas
+  │
+  └─► GET /cities           (city lookup for display names; one-time)
+          │
+          └─► cityLookup, nameToZone, zoneEnToZoneHe populated
+              All rows re-rendered (Hebrew zone names now available)
+              updateKnownAreas() refreshes chip labels
+```
+
+### Live events (SSE)
+
+```
+SSE message arrives
+  │  (ignored until historyLoaded = true)
+  │
+  ▼
+addRow(type, data, isLive=true, source, zone_en)
+  dedup via receivedIds Set
+  processEventForShelter() — update local shelter state
+  fetchShelterState()      — re-sync with server if area affected
+  filterAndPage()          — re-apply current filter + pagination
+  flashBanner()
+```
+
+### Polling fallback
+
+```
 Every 2 seconds:
   GET /history?since=latestTime
-    │  empty → no-op
-    └─► new rows → addRow() → sortTable() → filterRows()
+    empty → no-op
+    new rows → same addRow() path as SSE
 ```
 
-## City ID Resolution
+Polling ensures no events are missed if the SSE connection drops.
 
-`SYSTEM_MESSAGE` events carry `citiesIds` (integer array) rather than city name strings. The frontend resolves them at render time:
+### Area selection change
 
 ```
-citiesIds: [333, 1932]
-     │
-     ▼
-cityLookup["333"] → { name: "אשדוד", name_en: "Ashdod" }
-cityLookup["1932"] → { name: "...", name_en: "..." }
-     │
-     ▼  (depending on active language)
-"Ashdod · ..."   or   "אשדוד · ..."
+toggleArea(zoneEn)
+  │
+  ├─► activeAreasEn Set updated (add/remove/clear)
+  ├─► localStorage saved
+  ├─► renderAreaChips() + renderAreaDropdown()
+  ├─► fetchShelterState()
+  │       GET /shelter?zones=zone1|zone2
+  │       Response: { zone_en: { inShelter, shelterStartMs, intervals } }
+  │       → shelterState Map updated → updateShelterMeter()
+  └─► filterAndPage()
 ```
 
-City names are never stored in the DB — only IDs. Resolution is always done in the browser using the `/cities` endpoint.
+---
+
+## Zone Resolution
+
+`zone_en` is resolved **once at ingest** and stored in the `alerts.zone_en` column. The browser reads it directly from the history response — no client-side lookup required for filtering or shelter logic.
+
+City names are still resolved client-side from `/cities` for **display** only (showing Hebrew/English city names and zone labels in the table). City IDs from `SYSTEM_MESSAGE.citiesIds` that don't exist in the open cities dataset are silently skipped.
+
+---
+
+## Shelter Interval Logic
+
+```
+Server (shelter_intervals table):
+  ALERT (non-drill, new) → INSERT (zone_en, start_time) if no open row
+  "יציאה" SYSTEM_MESSAGE → UPDATE end_time WHERE end_time IS NULL
+
+GET /shelter?zones=Dan|Sharon:
+  Returns per zone:
+    inShelter:      true/false
+    shelterStartMs: start of open interval (ms) or null
+    intervals:      [ {start, end} ]  — completed intervals (ms)
+
+Frontend totalShelterMs(zEn):
+  sum of all completed interval durations
+  + (Date.now() − shelterStartMs) if currently in shelter
+```
 
 ---
 
 ## Observed Event Patterns
 
-Based on captured data (177 alerts across ~1 hour session):
-
-- Alerts arrive in **waves** of ~90 seconds duration, separated by ~10–15 minute quiet periods.
-- Each wave typically covers hundreds of cities across multiple geographic areas.
-- `SYSTEM_MESSAGE` events precede `ALERT` events for the same area by ~2 minutes.
+- Alerts arrive in **waves** of ~90 seconds, separated by ~10–15 minute quiet periods.
+- Each wave covers hundreds of cities across multiple geographic areas.
+- `SYSTEM_MESSAGE` early warnings precede `ALERT` events by ~2 minutes.
 - All-clear `SYSTEM_MESSAGE` events follow ~5–10 minutes after the last siren in an area.

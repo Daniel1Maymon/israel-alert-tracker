@@ -1,201 +1,28 @@
-import asyncio
+"""
+Flask application — routes and startup only.
+
+All business logic lives in the modules below:
+
+    config.py    — constants and environment variables
+    cities.py    — city/zone data loading and resolution
+    db.py        — SQLite schema, persistence, shelter intervals
+    ingestion.py — WebSocket listener, REST poller, SSE broadcast
+"""
+
 import json
 import os
 import queue
 import sqlite3
 import threading
-from datetime import datetime
-from typing import Any, Dict
-from urllib.request import urlopen, Request
 
-import websockets
 from flask import Flask, Response, render_template, request, stream_with_context
 
-WS_URL = "wss://ws.tzevaadom.co.il/socket?platform=ANDROID"
-HEADERS = {
-    "Origin": "https://www.tzevaadom.co.il",
-    "User-Agent": "okhttp/4.9.0",
-}
-DB_PATH = os.environ.get("DB_PATH", "alerts.db")
-CITIES_URL        = "https://raw.githubusercontent.com/eladnava/pikud-haoref-api/master/cities.json"
-NOTIFICATIONS_URL = "https://www.oref.org.il/WarningMessages/alert/alerts.json"
-REST_POLL_INTERVAL = 5   # seconds
+import cities
+from db import backfill_zone_en, init_db, rebuild_shelter_intervals
+from ingestion import rest_poller, run_ws, subscribers
+from config import DB_PATH
 
 app = Flask(__name__)
-subscribers: list[queue.Queue] = []
-ws_connected: bool = False
-
-# city_id (int) -> {"name": "...", "name_en": "..."}
-city_lookup: Dict[int, Dict[str, str]] = {}
-
-
-def load_cities() -> None:
-    global city_lookup
-    try:
-        with urlopen(CITIES_URL, timeout=10) as r:
-            cities = json.loads(r.read().decode())
-        city_lookup = {c["id"]: c for c in cities if c.get("id")}
-        print(f"[cities] loaded {len(city_lookup)} entries", flush=True)
-    except Exception as e:
-        print(f"[cities] failed to load: {e}", flush=True)
-
-
-# ---------------------------------------------------------------------------
-# DB
-# ---------------------------------------------------------------------------
-
-def init_db() -> None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS alerts (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                notification_id TEXT    UNIQUE,
-                type            TEXT    NOT NULL,
-                time            INTEGER,
-                threat          INTEGER,
-                is_drill        INTEGER,
-                cities          TEXT,
-                title_en        TEXT,
-                body_en         TEXT,
-                areas_ids       TEXT,
-                raw_data        TEXT    NOT NULL,
-                source          TEXT    DEFAULT 'tzevaadom',
-                received_at     TEXT    DEFAULT (datetime('now'))
-            )
-        """)
-        # add column to existing DBs that predate this change
-        try:
-            conn.execute("ALTER TABLE alerts ADD COLUMN source TEXT DEFAULT 'tzevaadom'")
-        except Exception:
-            pass
-
-
-def save_alert(msg_type: str, data: Dict[str, Any], raw: str, source: str = "tzevaadom") -> None:
-    nid = data.get("notificationId")
-    ts = data.get("time")
-    with sqlite3.connect(DB_PATH) as conn:
-        if msg_type == "ALERT":
-            conn.execute(
-                """INSERT OR IGNORE INTO alerts
-                       (notification_id, type, time, threat, is_drill, cities, raw_data, source)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (
-                    nid, msg_type, ts,
-                    data.get("threat"),
-                    1 if data.get("isDrill") else 0,
-                    json.dumps(data.get("cities", []), ensure_ascii=False),
-                    raw, source,
-                ),
-            )
-        elif msg_type == "SYSTEM_MESSAGE":
-            conn.execute(
-                """INSERT OR IGNORE INTO alerts
-                       (notification_id, type, time, title_en, body_en, areas_ids, raw_data, source)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (
-                    nid, msg_type, ts,
-                    data.get("titleEn"),
-                    data.get("bodyEn"),
-                    json.dumps(data.get("areasIds", []), ensure_ascii=False),
-                    raw, source,
-                ),
-            )
-
-
-# ---------------------------------------------------------------------------
-# WebSocket background listener
-# ---------------------------------------------------------------------------
-
-def broadcast(payload: str) -> None:
-    for q in subscribers[:]:
-        q.put(payload)
-
-
-async def ws_listener() -> None:
-    while True:
-        try:
-            async with websockets.connect(
-                WS_URL, ping_interval=30, additional_headers=HEADERS
-            ) as ws:
-                global ws_connected
-                ws_connected = True
-                print(f"[WS] connected", flush=True)
-                broadcast(json.dumps({"type": "STATUS", "data": {"status": "connected"}}))
-                while True:
-                    message = await ws.recv()
-                    try:
-                        payload: Dict[str, Any] = json.loads(message)
-                        save_alert(payload.get("type", ""), payload.get("data", {}), message)
-                        payload["source"] = "tzevaadom"
-                        broadcast(json.dumps(payload, ensure_ascii=False))
-                    except json.JSONDecodeError:
-                        pass
-        except Exception as e:
-            ws_connected = False
-            print(f"[WS] error: {e} — reconnecting in 5s", flush=True)
-            broadcast(json.dumps({"type": "STATUS", "data": {"status": "disconnected"}}))
-            await asyncio.sleep(5)
-
-
-def run_ws() -> None:
-    try:
-        asyncio.run(ws_listener())
-    except Exception as e:
-        print(f"[WS thread fatal] {e}", flush=True)
-
-
-def rest_poller() -> None:
-    """Polls the REST API every REST_POLL_INTERVAL seconds as a backup.
-    Catches any alerts missed during WebSocket reconnects."""
-    import time
-    # Pre-populate seen from DB so restarts don't reprocess recent oref alerts
-    seen: set = set()
-    try:
-        with sqlite3.connect(DB_PATH) as _c:
-            for (nid,) in _c.execute("SELECT notification_id FROM alerts WHERE notification_id IS NOT NULL"):
-                seen.add(str(nid))
-    except Exception:
-        pass
-    # Grace period: give the WS time to connect before REST activates
-    time.sleep(10)
-    while True:
-        if ws_connected:
-            time.sleep(REST_POLL_INTERVAL)
-            continue
-        try:
-            req = Request(
-                NOTIFICATIONS_URL,
-                headers={
-                    "Referer":    "https://www.oref.org.il/",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "User-Agent": "Mozilla/5.0",
-                },
-            )
-            with urlopen(req, timeout=5) as r:
-                body = r.read().decode("utf-8-sig").strip()
-            if not body:
-                continue   # no active alerts right now
-            payload = json.loads(body)
-            # oref format: {"id":"...", "title":[...], "data":[...], "cat":"1"}
-            nid = str(payload.get("id", ""))
-            if not nid or nid in seen:
-                continue
-            seen.add(nid)
-            cities = payload.get("data", [])
-            item = {
-                "notificationId": nid,
-                "time": int(time.time()),
-                "threat": int(payload.get("cat", 0)),
-                "isDrill": False,
-                "cities": cities,
-            }
-            raw = json.dumps({"type": "ALERT", "data": item}, ensure_ascii=False)
-            save_alert("ALERT", item, raw, source="oref")
-            broadcast(raw)
-            print(f"[REST] caught missed alert: {nid} — {cities[:3]}", flush=True)
-        except Exception as e:
-            print(f"[REST] poll error: {e}", flush=True)
-        time.sleep(REST_POLL_INTERVAL)
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +36,13 @@ def index():
 
 @app.route("/stream")
 def stream():
+    """Server-Sent Events endpoint.
+
+    Each connected client gets its own Queue registered in the shared
+    subscribers list.  broadcast() pushes messages into every queue;
+    this generator yields them as SSE frames.  A 15-second keepalive
+    comment prevents proxies from closing idle connections.
+    """
     q: queue.Queue = queue.Queue()
     subscribers.append(q)
 
@@ -219,7 +53,7 @@ def stream():
                     msg = q.get(timeout=15)
                     yield f"data: {msg}\n\n"
                 except queue.Empty:
-                    yield ": keepalive\n\n"   # SSE comment, no-op in browser
+                    yield ": keepalive\n\n"
         except GeneratorExit:
             if q in subscribers:
                 subscribers.remove(q)
@@ -232,12 +66,25 @@ def stream():
 
 
 @app.route("/cities")
-def cities():
-    return json.dumps(city_lookup, ensure_ascii=False)
+def cities_route():
+    """Return the full city lookup map (city_id → city record) as JSON.
+
+    The browser uses this to resolve city IDs in SYSTEM_MESSAGE events and
+    to build the zone→Hebrew name translation map for language switching.
+    The data is loaded once at startup and served from memory on every request.
+    """
+    return json.dumps(cities.city_lookup, ensure_ascii=False)
 
 
 @app.route("/history")
 def history():
+    """Return persisted alerts, optionally filtered to those after `since`.
+
+    ?since=<unix_seconds>  — omit to fetch all rows (initial page load)
+
+    Rows are returned oldest-first so the frontend can append them in order.
+    All fields are included; the browser decides which columns to display.
+    """
     since = request.args.get("since", type=int, default=0)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -253,12 +100,78 @@ def history():
     return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
 
+@app.route("/shelter")
+def shelter():
+    """Return pre-computed shelter intervals for one or more zones.
+
+    Query parameters:
+        zones=<zone_en>|<zone_en>  — pipe-separated list of zones to query
+        since=<unix_seconds>       — only return intervals starting at or after
+                                     this timestamp (default: 0 = all time)
+
+    Response shape:
+        {
+          "<zone_en>": {
+            "inShelter":      bool,
+            "shelterStartMs": int | null,   // ms timestamp if currently in shelter
+            "intervals":      [{"start": ms, "end": ms}, ...]  // closed intervals
+          },
+          ...
+        }
+
+    All timestamps are in milliseconds for direct JavaScript Date consumption.
+    Open intervals (end_time IS NULL) set inShelter=true and shelterStartMs;
+    closed intervals accumulate in the intervals array for total-time math.
+    """
+    zones_param = request.args.get("zones", "")
+    zone_ens    = [z.strip() for z in zones_param.split("|") if z.strip()]
+    since_s     = request.args.get("since", type=int, default=0)
+
+    if not zone_ens:
+        return json.dumps({}, ensure_ascii=False)
+
+    result = {}
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        for zone in zone_ens:
+            rows = conn.execute(
+                "SELECT start_time, end_time FROM shelter_intervals "
+                "WHERE zone_en = ? AND start_time >= ? ORDER BY start_time ASC",
+                (zone, since_s),
+            ).fetchall()
+
+            intervals        = []
+            in_shelter       = False
+            shelter_start_ms = None
+
+            for row in rows:
+                if row["end_time"] is None:
+                    in_shelter       = True
+                    shelter_start_ms = row["start_time"] * 1000
+                else:
+                    intervals.append({
+                        "start": row["start_time"] * 1000,
+                        "end":   row["end_time"]   * 1000,
+                    })
+
+            result[zone] = {
+                "inShelter":      in_shelter,
+                "shelterStartMs": shelter_start_ms,
+                "intervals":      intervals,
+            }
+
+    return json.dumps(result, ensure_ascii=False)
+
+
 # ---------------------------------------------------------------------------
-# Startup — runs when imported by gunicorn or executed directly.
+# Startup
 # ---------------------------------------------------------------------------
 
 init_db()
-load_cities()
+cities.load_cities()
+backfill_zone_en()
+rebuild_shelter_intervals()
+
 threading.Thread(target=run_ws,      daemon=True).start()
 threading.Thread(target=rest_poller, daemon=True).start()
 

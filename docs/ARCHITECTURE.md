@@ -1,53 +1,101 @@
 # Architecture
 
-## Process Model
+## Current Architecture
 
-A single Python process runs three concurrent execution paths:
+```
+External Sources
+  wss://ws.tzevaadom.co.il      ──► ws_listener thread ──►┐
+  https://oref.org.il (fallback) ──► rest_poller thread  ──►┤
+                                                            ▼
+                                                    resolve_zones()        ← server-side at ingest
+                                                    save_alert()
+                                                    update_shelter_intervals()
+                                                    SQLite (alerts.db)
+                                                         │
+                                    ┌────────────────────┤
+                                    ▼                    ▼
+                            SSE /stream            GET /history
+                         (push, real-time)       (initial load + fallback poll)
+                                    │                    │
+                                    └─────────┬──────────┘
+                                              ▼
+                                          Browser
+                            ┌─────────────────────────────────────┐
+                            │  fetchShelterState() ─► GET /shelter │
+                            │  area filter (multi-select Set)       │
+                            │  shelter meter (one card per area)    │
+                            │  pagination (10 rows/page)            │
+                            │  search, sort, render, i18n          │
+                            └─────────────────────────────────────┘
+```
 
-| Thread | Role |
+---
+
+### Backend responsibilities
+
+| Responsibility | Where |
 |---|---|
-| Main (Flask/Werkzeug) | HTTP server — serves the UI and API endpoints |
-| `run_ws` (daemon thread) | Async WebSocket listener — primary alert source |
-| `rest_poller` (daemon thread) | HTTP polling loop — backup alert source (oref.org.il) |
+| Connect to external WebSocket | `app.py` — `ws_listener()` |
+| Fallback REST polling (gated on `ws_connected`) | `app.py` — `rest_poller()` |
+| Resolve city → zone_en at ingest | `app.py` — `resolve_zones()` |
+| Persist enriched rows + dedup | `app.py` — `save_alert()` |
+| Maintain shelter intervals in DB | `app.py` — `update_shelter_intervals()` |
+| Push live events to all SSE clients | `app.py` — `broadcast()` |
+| Serve enriched history rows | `GET /history` |
+| Serve pre-computed shelter intervals | `GET /shelter` |
+| Serve city name lookup (for display only) | `GET /cities` |
 
-Both background threads are started only inside the Werkzeug child process (`WERKZEUG_RUN_MAIN == 'true'`) to avoid double-start when debug mode is active.
+### Frontend responsibilities
 
-## Components
-
-### `app.py`
-
-The entire backend in one file. Responsibilities:
-
-- **`init_db()`** — creates the SQLite schema on startup; runs `ALTER TABLE` to add new columns to pre-existing databases.
-- **`load_cities()`** — fetches 1,449 city records from a GitHub-hosted JSON file at startup; builds an in-memory `dict[int, dict]` keyed by city ID.
-- **`save_alert()`** — writes an alert to SQLite using `INSERT OR IGNORE` on `notification_id` to prevent duplicates within a source.
-- **`ws_listener()`** — async loop; connects to `wss://ws.tzevaadom.co.il/socket?platform=ANDROID` with Android-mimicking headers, auto-reconnects after 5 s on failure, sets the `ws_connected` flag.
-- **`rest_poller()`** — polls `https://www.oref.org.il/WarningMessages/alert/alerts.json` every 5 s **only when `ws_connected == False`**; pre-seeds its `seen` set from the DB to avoid reprocessing after restarts.
-- **`broadcast()`** — pushes a message string into every active SSE subscriber queue.
-- **Flask routes** — `/` (UI), `/stream` (SSE), `/history` (DB query), `/cities` (city lookup JSON).
-
-### `templates/index.html`
-
-Self-contained single-page app (vanilla JS, no frameworks). Responsibilities:
-
-- Polls `/history?since=<timestamp>` every **2 seconds** to pick up new rows.
-- Tracks `latestTime` to request only new records on subsequent polls.
-- Maintains an in-memory city lookup (`cityLookup`) fetched once from `/cities`.
-- Renders rows sorted by `data.time` (descending) after every insert.
-- Updates the elapsed timer (`HH:MM:SS`) every second via `setInterval`.
-- Language toggle (`en`/`he`) re-renders all row content cells and flips `<html dir>`.
-
-### `alerts.db`
-
-SQLite file created in the working directory on first run. Single table: `alerts`. See [DATA_FLOW.md](DATA_FLOW.md) for schema.
-
-## Key Design Decisions
-
-| Decision | Rationale |
+| Responsibility | Where |
 |---|---|
-| REST poller only activates when WS is disconnected | Prevents duplicate rows — the two sources assign different IDs to the same real-world event |
-| `INSERT OR IGNORE` on `notification_id` | Deduplicates within a single source across restarts |
-| City lookup loaded at startup, served via `/cities` | ~1,449 records; cheap to hold in memory; avoids per-request DB joins |
-| Frontend polls `/history` rather than consuming SSE directly | Simpler, stateless; survives server restarts without losing history |
-| `ws_connected` global flag shared between threads | Both threads run in the same process; Python GIL makes bool reads/writes atomic |
-| Flask debug mode with `WERKZEUG_RUN_MAIN` guard | Enables hot-reload during development without starting background threads twice |
+| Receive live events via SSE | `index.html` — EventSource `/stream` |
+| Poll `/history` as SSE fallback | `index.html` — `poll()` every 2s |
+| Fetch shelter intervals from server | `index.html` — `fetchShelterState()` |
+| Accumulate live shelter events into state | `index.html` — `processEventForShelter()` |
+| Render shelter meter cards | `index.html` — `shelterCardHTML()` |
+| Multi-area filter (chips + mobile dropdown) | `index.html` — `toggleArea()` |
+| Row rendering, sorting, search, pagination | `index.html` — `addRow()`, `filterAndPage()` |
+| Language switching (EN/HE, RTL) | `index.html` — `applyLang()` |
+| All UI state (localStorage, in-memory Maps) | `index.html` |
+
+The backend is a **WebSocket-to-SQLite relay with server-side enrichment**. Zone resolution and shelter state are computed once at ingest and stored durably. The browser is a thin view layer.
+
+---
+
+## Database Schema
+
+### `alerts`
+
+| Column | Notes |
+|---|---|
+| `notification_id` | UNIQUE dedup key |
+| `type` | `ALERT` or `SYSTEM_MESSAGE` |
+| `time` | Unix timestamp |
+| `zone_en` | Pipe-separated zone names (e.g. `Dan|Sharon`), resolved at ingest |
+| `cities` | JSON array of Hebrew city name strings (ALERT only) |
+| `areas_ids` | JSON array of area IDs (SYSTEM_MESSAGE only) |
+| `title_en`, `body_en` | English text (SYSTEM_MESSAGE only) |
+| `raw_data` | Full original JSON payload |
+| `source` | `tzevaadom` or `oref` |
+
+### `shelter_intervals`
+
+| Column | Notes |
+|---|---|
+| `zone_en` | Area name (matches `zone_en` in `alerts`) |
+| `start_time` | Unix timestamp of first alert for this open interval |
+| `end_time` | Unix timestamp of exit message; `NULL` while still in shelter |
+
+`UNIQUE(zone_en, start_time)` prevents duplicate open intervals.
+
+---
+
+## Startup sequence
+
+On every process start `app.py` runs four steps before accepting traffic:
+
+1. `init_db()` — create tables / add missing columns to existing DBs.
+2. `load_cities()` — fetch the GitHub cities JSON into memory (`city_lookup`, `name_to_zone`).
+3. `backfill_zone_en()` — resolve `zone_en` for any rows saved before this column existed.
+4. `rebuild_shelter_intervals()` — delete and replay all alerts to rebuild the `shelter_intervals` table from scratch (ensures consistency after restarts or schema changes).

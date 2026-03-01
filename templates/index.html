@@ -360,6 +360,32 @@
     }
     .shelter-sub { font-size: .73rem; color: #888; }
     .shelter-cards-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    /* ── pagination ── */
+    #pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 10px 20px;
+      background: #141414;
+      border-top: 1px solid #222;
+      flex-shrink: 0;
+    }
+    .page-btn {
+      padding: 4px 14px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #1e1e1e;
+      color: #ccc;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: background .15s;
+      line-height: 1.6;
+    }
+    .page-btn:hover:not([disabled]) { background: #2a2a2a; border-color: #555; }
+    .page-btn[disabled] { color: #333; cursor: default; border-color: #1e1e1e; }
+    .page-label { font-size: .8rem; color: #555; }
   </style>
 </head>
 <body>
@@ -377,7 +403,7 @@
     </a>
     <a href="https://www.linkedin.com/in/daniel-maymon/" target="_blank" rel="noreferrer">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-      LinkedIn
+      LinkedIn-Daniel Maymon
     </a>
   </div>
   <button id="lang-btn">עברית</button>
@@ -427,6 +453,7 @@
   </table>
 </main>
 
+<div id="pagination"></div>
 
 <script>
   // ── i18n ────────────────────────────────────────────────────────────────
@@ -546,7 +573,7 @@
     updateShelterMeter();
 
     // re-filter with current search term in new language
-    filterRows(searchEl.value);
+    filterAndPage(searchEl.value);
   }
 
   langBtn.addEventListener('click', () => {
@@ -623,8 +650,9 @@
       }).join(' · ') || '—';
       cell.innerHTML = `<div class="cities-scroll">${names}</div>`;
       tr.dataset.citiesText = (data.cities || []).join(' ').toLowerCase();
-      const alertZoneEns = getZoneEns(type, data);
-      tr.dataset.areaEn = alertZoneEns.join('|');
+      // use server-provided zone_en if already set, fall back to client-side resolution
+      if (!tr.dataset.areaEn) tr.dataset.areaEn = getZoneEns(type, data).join('|');
+      const alertZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
       areasCell.textContent = alertZoneEns.map(z => lang === 'he' ? (zoneEnToZoneHe[z] || z) : z).join(' · ');
       updateKnownAreas(alertZoneEns);
     } else {
@@ -645,15 +673,25 @@
                         <div class="msg-body">${data[bodyKey] || ''}</div>
                         ${cityNames ? `<div class="cities-scroll" style="margin-top:4px">${cityNames}</div>` : ''}`;
       tr.dataset.citiesText = cityNames.toLowerCase();
-      const sysZoneEns = getZoneEns(type, data);
-      tr.dataset.areaEn = sysZoneEns.join('|');
+      // use server-provided zone_en if already set, fall back to client-side resolution
+      if (!tr.dataset.areaEn) tr.dataset.areaEn = getZoneEns(type, data).join('|');
+      const sysZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
       areasCell.textContent = sysZoneEns.map(z => lang === 'he' ? (zoneEnToZoneHe[z] || z) : z).join(' · ');
       updateKnownAreas(sysZoneEns);
     }
   }
 
   // ── add row ──────────────────────────────────────────────────────────────
-  function addRow(type, data, isLive = true, source = 'tzevaadom') {
+  const receivedIds = new Set();   // dedup across SSE + polling
+
+  function addRow(type, data, isLive = true, source = 'tzevaadom', zoneEnStr = '') {
+    // dedup: same event can arrive via SSE and then again via the next poll
+    const nid = data.notificationId;
+    if (nid) {
+      if (receivedIds.has(String(nid))) return;
+      receivedIds.add(String(nid));
+    }
+
     emptyRow.style.display = 'none';
     counter++;
     totalEl.textContent = t('alerts', counter);
@@ -665,8 +703,9 @@
     const tr = document.createElement('tr');
     tr.className    = type;
     tr.dataset.time = Number(data.time);
-    tr._type        = type;   // store for re-render on lang switch
+    tr._type        = type;
     tr._data        = data;
+    if (zoneEnStr) tr.dataset.areaEn = zoneEnStr;   // set before renderRowContent
 
     tr.innerHTML = `
       <td class="col-num">${counter}</td>
@@ -690,7 +729,8 @@
 
     tbody.appendChild(tr);
     sortTable();
-    filterRows(searchEl.value);
+    if (isLive) currentPage = 1;
+    filterAndPage(searchEl.value);
 
     if (isLive) {
       dot.classList.add('flash');
@@ -705,24 +745,55 @@
     }
   }
 
-  // ── search ───────────────────────────────────────────────────────────────
-  function filterRows(query) {
+  // ── search + pagination ───────────────────────────────────────────────────
+  const PAGE_SIZE = 10;
+  let currentPage = 1;
+
+  function filterAndPage(query) {
     const q = query.trim().toLowerCase();
-    let visible = 0;
-    tbody.querySelectorAll('tr[data-time]').forEach(tr => {
+    const allRows = [...tbody.querySelectorAll('tr[data-time]')];
+
+    const matching = allRows.filter(tr => {
       const textMatch = !q || (tr.dataset.citiesText || '').includes(q);
       const areaMatch = activeAreasEn.size === 0 ||
         (tr.dataset.areaEn || '').split('|').some(z => activeAreasEn.has(z));
-      const match = textMatch && areaMatch;
-      tr.style.display = match ? '' : 'none';
-      if (match) visible++;
+      return textMatch && areaMatch;
     });
-    noResultsRow.style.display = ((q || activeAreasEn.size > 0) && visible === 0) ? '' : 'none';
+
+    const totalPages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+    currentPage = Math.min(currentPage, totalPages);
+
+    const start    = (currentPage - 1) * PAGE_SIZE;
+    const pageSet  = new Set(matching.slice(start, start + PAGE_SIZE));
+    allRows.forEach(tr => { tr.style.display = pageSet.has(tr) ? '' : 'none'; });
+
+    noResultsRow.style.display = matching.length === 0 ? '' : 'none';
+    renderPagination(matching.length, totalPages);
+  }
+
+  function renderPagination(total, totalPages) {
+    const el = document.getElementById('pagination');
+    if (total <= PAGE_SIZE) { el.innerHTML = ''; return; }
+
+    const label = lang === 'he'
+      ? `עמוד ${currentPage} מתוך ${totalPages} (${total} תוצאות)`
+      : `Page ${currentPage} of ${totalPages} (${total} results)`;
+
+    el.innerHTML = `
+      <button class="page-btn" id="page-prev" ${currentPage === 1 ? 'disabled' : ''}>&#8249;</button>
+      <span class="page-label">${label}</span>
+      <button class="page-btn" id="page-next" ${currentPage === totalPages ? 'disabled' : ''}>&#8250;</button>`;
+
+    if (currentPage > 1)
+      document.getElementById('page-prev').addEventListener('click', () => { currentPage--; filterAndPage(searchEl.value); });
+    if (currentPage < totalPages)
+      document.getElementById('page-next').addEventListener('click', () => { currentPage++; filterAndPage(searchEl.value); });
   }
 
   searchEl.addEventListener('input', () => {
     localStorage.setItem('search', searchEl.value);
-    filterRows(searchEl.value);
+    currentPage = 1;
+    filterAndPage(searchEl.value);
   });
 
   // ── sort ─────────────────────────────────────────────────────────────────
@@ -751,8 +822,8 @@
       tbody.querySelectorAll('tr[data-time]').forEach(tr => {
         renderRowContent(tr, tr._type, tr._data);
       });
-      // Rebuild shelter state now that zone data is available
-      rebuildShelterState();
+      // Fetch server-computed shelter state for pre-selected areas
+      fetchShelterState();
     });
 
   // Returns stable English zone names for a row (used for filtering & knownAreas).
@@ -868,16 +939,22 @@
     }
     localStorage.setItem('activeAreasEn', JSON.stringify([...activeAreasEn]));
     renderAreaChips();
-    updateShelterMeter();
-    filterRows(searchEl.value);
+    fetchShelterState();   // fetch server-computed intervals for the new selection
+    currentPage = 1;
+    filterAndPage(searchEl.value);
   }
 
   function updateKnownAreas(zoneEns) {
     let changed = false;
     zoneEns.forEach(zEn => {
+      const heZone = zoneEnToZoneHe[zEn] || null;
       if (!knownAreas.has(zEn)) {
-        knownAreas.set(zEn, { zone_en: zEn, zone: zoneEnToZoneHe[zEn] || zEn });
+        knownAreas.set(zEn, { zone_en: zEn, zone: heZone || zEn });
         changed = true;
+      } else if (heZone) {
+        // Cities may have loaded after this zone was first inserted with an English fallback — update it
+        const existing = knownAreas.get(zEn);
+        if (existing.zone === zEn) { existing.zone = heZone; changed = true; }
       }
     });
     if (changed) renderAreaChips();
@@ -945,16 +1022,24 @@
     }
   }
 
-  function rebuildShelterState() {
-    shelterState.clear();
-    const rows = [...tbody.querySelectorAll('tr[data-time]')];
-    // process in chronological order (oldest first)
-    rows.sort((a, b) => Number(a.dataset.time) - Number(b.dataset.time));
-    rows.forEach(tr => {
-      const zoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
-      processEventForShelter(tr._type, tr._data, zoneEns, Number(tr.dataset.time) * 1000);
-    });
-    updateShelterMeter();
+  // Fetch pre-computed shelter state from server for all currently active areas.
+  // Falls back to updateShelterMeter() on error (shows whatever is in local shelterState).
+  function fetchShelterState() {
+    if (activeAreasEn.size === 0) { updateShelterMeter(); return; }
+    const zonesParam = [...activeAreasEn].join('|');
+    fetch(`/shelter?zones=${encodeURIComponent(zonesParam)}`)
+      .then(r => r.json())
+      .then(serverData => {
+        Object.entries(serverData).forEach(([zEn, state]) => {
+          shelterState.set(zEn, {
+            inShelter:      state.inShelter,
+            shelterStartMs: state.shelterStartMs,
+            intervals:      state.intervals,
+          });
+        });
+        updateShelterMeter();
+      })
+      .catch(() => updateShelterMeter());
   }
 
   function shelterCardHTML(zEn) {
@@ -992,11 +1077,11 @@
   function resolveCityIds(ids) {
     return (ids || []).map(id => {
       const c = cityLookup[String(id)];
-      if (!c) return String(id);
+      if (!c) return null;   // ID not in our dataset — skip silently
       const name = lang === 'he' ? c.name : c.name_en;
       const zone = lang === 'he' ? c.zone : c.zone_en;
       return zone ? `${name} <span class="city-zone">(${zone})</span>` : name;
-    }).join(' · ');
+    }).filter(Boolean).join(' · ');
   }
 
   // ── polling ──────────────────────────────────────────────────────────────
@@ -1015,7 +1100,7 @@
         rows.forEach(r => {
           try {
             const raw = JSON.parse(r.raw_data);
-            addRow(raw.type, raw.data, isNew, raw.source || r.source || 'tzevaadom');
+            addRow(raw.type, raw.data, isNew, raw.source || r.source || 'tzevaadom', r.zone_en || '');
             if (Number(raw.data.time) > latestTime)
               latestTime = Number(raw.data.time);
           } catch {}
@@ -1026,18 +1111,39 @@
             latestTime = Math.max(...rows.map(r => {
               try { return Number(JSON.parse(r.raw_data).data.time); } catch { return 0; }
             }));
+          fetchShelterState();   // initial shelter state from server after history loads
         }
       })
       .catch(() => setStatus('disconnected'));
   }
 
+  // ── SSE — live push for new events ───────────────────────────────────────
+  const evtSource = new EventSource('/stream');
+  evtSource.onmessage = (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      if (payload.type === 'STATUS') {
+        setStatus(payload.data.status === 'connected' ? 'connected' : 'disconnected');
+        return;
+      }
+      // don't process live events until the full history is loaded
+      if (!historyLoaded) return;
+      if (payload.type === 'ALERT' || payload.type === 'SYSTEM_MESSAGE') {
+        addRow(payload.type, payload.data, true, payload.source || 'tzevaadom', payload.zone_en || '');
+        if (Number(payload.data.time) > latestTime)
+          latestTime = Number(payload.data.time);
+      }
+    } catch {}
+  };
+  evtSource.onerror = () => setStatus('disconnected');
+
   // ── restore state & apply lang on init ──────────────────────────────────
   const savedSearch = localStorage.getItem('search') || '';
   if (savedSearch) searchEl.value = savedSearch;
-  applyLang();   // apply saved language (sets dir, updates all i18n elements)
+  applyLang();
 
-  poll();                          // load history immediately
-  setInterval(poll, 2000);         // then poll every 2 seconds
+  poll();                          // load full history immediately
+  setInterval(poll, 2000);         // poll every 2s as SSE fallback
 </script>
 </body>
 </html>
