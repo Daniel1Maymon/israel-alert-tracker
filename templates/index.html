@@ -232,6 +232,134 @@
     }
     .area-chip:hover { background: #2a2a2a; color: #bbb; border-color: #444; }
     .area-chip.active { background: #2d2d2d; color: #fff; border-color: #777; }
+
+    /* ── area dropdown (mobile only) ── */
+    #area-dropdown-wrap {
+      display: none;
+      padding: 8px 20px;
+      background: #141414;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+    #area-dropdown-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      font-size: .875rem;
+      cursor: pointer;
+      text-align: start;
+      outline: none;
+    }
+    #area-dropdown-trigger:focus { border-color: #555; }
+    #area-dropdown-trigger .chevron { transition: transform .2s; flex-shrink: 0; }
+    #area-dropdown-trigger.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: #222; }
+    #area-dropdown-trigger.open .chevron { transform: rotate(180deg); }
+
+    #area-checklist {
+      display: none;
+      flex-direction: column;
+      max-height: 190px;
+      overflow-y: auto;
+      border-radius: 0 0 6px 6px;
+      border: 1px solid #333;
+      border-top: none;
+      background: #1e1e1e;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+    #area-checklist.open { display: flex; }
+    #area-checklist::-webkit-scrollbar { width: 4px; }
+    #area-checklist::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    .area-check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      font-size: .85rem;
+      color: #aaa;
+      cursor: pointer;
+      border-bottom: 1px solid #252525;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .area-check-item:last-child { border-bottom: none; }
+    .area-check-item.checked { color: #fff; background: #2a2a2a; }
+    .area-check-item .check-box {
+      width: 16px; height: 16px;
+      border-radius: 3px;
+      border: 1px solid #555;
+      background: #1e1e1e;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .area-check-item.checked .check-box {
+      background: #555;
+      border-color: #777;
+    }
+    .area-check-item.checked .check-box::after {
+      content: '✓';
+      font-size: .7rem;
+      color: #fff;
+      line-height: 1;
+    }
+    .area-check-all { border-bottom: 1px solid #333 !important; color: #666; font-size: .78rem; }
+
+    @media (max-width: 639px) {
+      #area-filter { display: none; }
+      #area-dropdown-wrap { display: block; }
+    }
+
+    /* ── shelter meter ── */
+    #shelter-meter {
+      padding: 10px 20px;
+      background: #141414;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+    .shelter-card {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 18px;
+      border-radius: 8px;
+    }
+    .shelter-card.shelter-in {
+      background: rgba(183, 28, 28, 0.18);
+      border: 1px solid rgba(244, 67, 54, 0.45);
+    }
+    .shelter-card.shelter-out {
+      background: rgba(27, 94, 32, 0.15);
+      border: 1px solid rgba(76, 175, 80, 0.4);
+    }
+    .shelter-indicator {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .shelter-in .shelter-indicator { background: #f44336; box-shadow: 0 0 8px #f44336; animation: pulse-red 1.5s infinite; }
+    .shelter-out .shelter-indicator { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 6px #f44336; }
+      50%       { box-shadow: 0 0 14px #f44336; }
+    }
+    .shelter-info { display: flex; flex-direction: column; gap: 2px; }
+    .shelter-status { font-size: .9rem; font-weight: 700; }
+    .shelter-in  .shelter-status { color: #ef9a9a; }
+    .shelter-out .shelter-status { color: #a5d6a7; }
+    .shelter-area { font-size: .73rem; color: #666; }
+    .shelter-timer {
+      font-size: 1.25rem; font-weight: 700;
+      font-family: monospace; font-variant-numeric: tabular-nums;
+      letter-spacing: 1px; color: #f44336;
+    }
+    .shelter-sub { font-size: .73rem; color: #888; }
+    .shelter-cards-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
   </style>
 </head>
 <body>
@@ -262,6 +390,18 @@
 </div>
 
 <div id="area-filter"></div>
+
+<div id="area-dropdown-wrap">
+  <button id="area-dropdown-trigger">
+    <span id="area-dropdown-label"></span>
+    <svg class="chevron" viewBox="0 0 10 6" width="10" height="6" fill="none">
+      <path d="M1 1l4 4 4-4" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <div id="area-checklist"></div>
+</div>
+
+<div id="shelter-meter" style="display:none"></div>
 
 <main>
   <table id="alerts-table">
@@ -310,10 +450,13 @@
       badge_alert:  'Alert',
       badge_warning:'Warning',
       badge_drill:  'Drill',
-      banner_alert: (cities) => `🚨 ALERT — ${cities}`,
-      banner_warn:  (title)  => `⚠️ ${title || 'System Message'}`,
-      msg_key:      { title: 'titleEn', body: 'bodyEn' },
-      lang_switch:  'עברית',
+      banner_alert:   (cities) => `🚨 ALERT — ${cities}`,
+      banner_warn:    (title)  => `⚠️ ${title || 'System Message'}`,
+      msg_key:        { title: 'titleEn', body: 'bodyEn' },
+      lang_switch:    'עברית',
+      shelter_in:     'In Shelter',
+      shelter_out:    'Not in Shelter',
+      shelter_total:  'Total shelter time',
     },
     he: {
       title:       'מוניטור צבע אדום',
@@ -334,10 +477,13 @@
       badge_alert:  'התרעה',
       badge_warning:'אזהרה',
       badge_drill:  'תרגיל',
-      banner_alert: (cities) => `🚨 התרעה — ${cities}`,
-      banner_warn:  (title)  => `⚠️ ${title || 'הודעת מערכת'}`,
-      msg_key:      { title: 'titleHe', body: 'bodyHe' },
-      lang_switch:  'English',
+      banner_alert:   (cities) => `🚨 התרעה — ${cities}`,
+      banner_warn:    (title)  => `⚠️ ${title || 'הודעת מערכת'}`,
+      msg_key:        { title: 'titleHe', body: 'bodyHe' },
+      lang_switch:    'English',
+      shelter_in:     'במרחב מוגן',
+      shelter_out:    'לא במרחב מוגן',
+      shelter_total:  'סה"כ זמן במרחב מוגן',
     },
   };
 
@@ -358,7 +504,12 @@
   const langBtn    = document.getElementById('lang-btn');
   const searchEl     = document.getElementById('search');
   const noResultsRow = document.getElementById('no-results-row');
-  const areaFilterEl = document.getElementById('area-filter');
+  const areaFilterEl       = document.getElementById('area-filter');
+  const areaChecklistEl    = document.getElementById('area-checklist');
+  const areaDropdownWrapEl = document.getElementById('area-dropdown-wrap');
+  const areaDropdownTrigEl = document.getElementById('area-dropdown-trigger');
+  const areaDropdownLblEl  = document.getElementById('area-dropdown-label');
+  const shelterMeterEl     = document.getElementById('shelter-meter');
 
   // ── language switch ──────────────────────────────────────────────────────
   function applyLang() {
@@ -391,6 +542,9 @@
     // re-render area chips in new language
     renderAreaChips();
 
+    // refresh shelter meter text in new language
+    updateShelterMeter();
+
     // re-filter with current search term in new language
     filterRows(searchEl.value);
   }
@@ -412,9 +566,22 @@
     return `${pad(Math.floor(secs/3600))}:${pad(Math.floor((secs%3600)/60))}:${pad(secs%60)}`;
   }
 
+  function formatDuration(ms) {
+    const secs = Math.max(0, Math.floor(ms / 1000));
+    return `${pad(Math.floor(secs/3600))}:${pad(Math.floor((secs%3600)/60))}:${pad(secs%60)}`;
+  }
+
   setInterval(() => {
     elapsedCells.forEach(({ el, receivedAt }) => {
       el.textContent = elapsedStr(receivedAt);
+    });
+    // tick all shelter live timers for areas currently in shelter
+    activeAreasEn.forEach(zEn => {
+      const s = shelterState.get(zEn);
+      if (s && s.inShelter) {
+        const timerEl = shelterMeterEl.querySelector(`.shelter-card[data-zone="${zEn}"] .shelter-timer`);
+        if (timerEl) timerEl.textContent = formatDuration(totalShelterMs(zEn));
+      }
     });
   }, 1000);
 
@@ -512,6 +679,11 @@
 
     renderRowContent(tr, type, data);
 
+    // update shelter state machine for this event
+    const eventZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
+    processEventForShelter(type, data, eventZoneEns, receivedAt);
+    if (eventZoneEns.some(z => activeAreasEn.has(z))) updateShelterMeter();
+
     const elCell = tr.querySelector('.col-elapsed');
     elCell.textContent = elapsedStr(receivedAt);
     elapsedCells.push({ el: elCell, receivedAt });
@@ -539,12 +711,13 @@
     let visible = 0;
     tbody.querySelectorAll('tr[data-time]').forEach(tr => {
       const textMatch = !q || (tr.dataset.citiesText || '').includes(q);
-      const areaMatch = !activeAreaEn || (tr.dataset.areaEn || '').split('|').includes(activeAreaEn);
+      const areaMatch = activeAreasEn.size === 0 ||
+        (tr.dataset.areaEn || '').split('|').some(z => activeAreasEn.has(z));
       const match = textMatch && areaMatch;
       tr.style.display = match ? '' : 'none';
       if (match) visible++;
     });
-    noResultsRow.style.display = ((q || activeAreaEn) && visible === 0) ? '' : 'none';
+    noResultsRow.style.display = ((q || activeAreasEn.size > 0) && visible === 0) ? '' : 'none';
   }
 
   searchEl.addEventListener('input', () => {
@@ -578,6 +751,8 @@
       tbody.querySelectorAll('tr[data-time]').forEach(tr => {
         renderRowContent(tr, tr._type, tr._data);
       });
+      // Rebuild shelter state now that zone data is available
+      rebuildShelterState();
     });
 
   // Returns stable English zone names for a row (used for filtering & knownAreas).
@@ -607,17 +782,17 @@
   }
 
   // ── area filter ──────────────────────────────────────────────────────────
-  let activeAreaEn = localStorage.getItem('activeAreaEn') || null;  // zone_en of selected chip, null = All
-  let knownAreas   = new Map();            // zone_en -> {zone_en, zone}
+  let activeAreasEn = new Set(JSON.parse(localStorage.getItem('activeAreasEn') || '[]'));
+  let knownAreas    = new Map();   // zone_en -> {zone_en, zone}
 
   function renderAreaChips() {
     areaFilterEl.innerHTML = '';
-    if (knownAreas.size === 0) return;
+    if (knownAreas.size === 0) { renderAreaDropdown(); return; }
 
     const allChip = document.createElement('button');
-    allChip.className = 'area-chip' + (activeAreaEn === null ? ' active' : '');
+    allChip.className = 'area-chip' + (activeAreasEn.size === 0 ? ' active' : '');
     allChip.textContent = t('all');
-    allChip.addEventListener('click', () => selectArea(null));
+    allChip.addEventListener('click', () => toggleArea(null));
     areaFilterEl.appendChild(allChip);
 
     const sorted = [...knownAreas.values()].sort((a, b) =>
@@ -625,18 +800,75 @@
     );
     sorted.forEach(area => {
       const chip = document.createElement('button');
-      chip.className = 'area-chip' + (activeAreaEn === area.zone_en ? ' active' : '');
+      chip.className = 'area-chip' + (activeAreasEn.has(area.zone_en) ? ' active' : '');
       chip.textContent = lang === 'he' ? area.zone : area.zone_en;
-      chip.addEventListener('click', () => selectArea(area.zone_en));
+      chip.addEventListener('click', () => toggleArea(area.zone_en));
       areaFilterEl.appendChild(chip);
     });
+
+    renderAreaDropdown();
   }
 
-  function selectArea(zoneEn) {
-    activeAreaEn = zoneEn;
-    if (zoneEn === null) localStorage.removeItem('activeAreaEn');
-    else localStorage.setItem('activeAreaEn', zoneEn);
+  function updateDropdownLabel() {
+    if (activeAreasEn.size === 0) {
+      areaDropdownLblEl.textContent = t('all');
+    } else if (activeAreasEn.size === 1) {
+      const zEn = [...activeAreasEn][0];
+      const area = knownAreas.get(zEn);
+      areaDropdownLblEl.textContent = area ? (lang === 'he' ? area.zone : area.zone_en) : zEn;
+    } else {
+      areaDropdownLblEl.textContent = lang === 'he'
+        ? `${activeAreasEn.size} אזורים נבחרו`
+        : `${activeAreasEn.size} areas selected`;
+    }
+  }
+
+  areaDropdownTrigEl.addEventListener('click', () => {
+    const open = areaChecklistEl.classList.toggle('open');
+    areaDropdownTrigEl.classList.toggle('open', open);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!areaDropdownWrapEl.contains(e.target)) {
+      areaChecklistEl.classList.remove('open');
+      areaDropdownTrigEl.classList.remove('open');
+    }
+  });
+
+  function renderAreaDropdown() {
+    areaChecklistEl.innerHTML = '';
+
+    const allItem = document.createElement('div');
+    allItem.className = 'area-check-item area-check-all' + (activeAreasEn.size === 0 ? ' checked' : '');
+    allItem.innerHTML = `<div class="check-box"></div><span>${t('all')}</span>`;
+    allItem.addEventListener('click', () => toggleArea(null));
+    areaChecklistEl.appendChild(allItem);
+
+    const sorted = [...knownAreas.values()].sort((a, b) =>
+      (lang === 'he' ? a.zone : a.zone_en).localeCompare(lang === 'he' ? b.zone : b.zone_en)
+    );
+    sorted.forEach(area => {
+      const item = document.createElement('div');
+      item.className = 'area-check-item' + (activeAreasEn.has(area.zone_en) ? ' checked' : '');
+      item.innerHTML = `<div class="check-box"></div><span>${lang === 'he' ? area.zone : area.zone_en}</span>`;
+      item.addEventListener('click', () => toggleArea(area.zone_en));
+      areaChecklistEl.appendChild(item);
+    });
+
+    updateDropdownLabel();
+  }
+
+  function toggleArea(zoneEn) {
+    if (zoneEn === null) {
+      activeAreasEn.clear();
+    } else if (activeAreasEn.has(zoneEn)) {
+      activeAreasEn.delete(zoneEn);
+    } else {
+      activeAreasEn.add(zoneEn);
+    }
+    localStorage.setItem('activeAreasEn', JSON.stringify([...activeAreasEn]));
     renderAreaChips();
+    updateShelterMeter();
     filterRows(searchEl.value);
   }
 
@@ -649,6 +881,112 @@
       }
     });
     if (changed) renderAreaChips();
+  }
+
+  // ── shelter state machine ─────────────────────────────────────────────────
+  // Map: zone_en → {
+  //   inShelter: bool,
+  //   shelterStartMs: number|null,   — start of the current open period
+  //   intervals: [{start, end}],     — all completed shelter periods (ms)
+  // }
+  // Storing raw intervals allows future filtering by any time window (last 1h, 6h, etc.)
+  const shelterState = new Map();
+
+  function getShelterState(zoneEn) {
+    if (!shelterState.has(zoneEn))
+      shelterState.set(zoneEn, { inShelter: false, shelterStartMs: null, intervals: [] });
+    return shelterState.get(zoneEn);
+  }
+
+  // Returns total ms in shelter within [from, to].
+  // Call with no args for all-time total. Pass from/to (ms) for any time window.
+  function totalShelterMs(zEn, from = 0, to = Infinity) {
+    const s = shelterState.get(zEn);
+    if (!s) return 0;
+    let total = 0;
+    for (const iv of s.intervals) {
+      const ivStart = Math.max(iv.start, from);
+      const ivEnd   = Math.min(iv.end,   to);
+      if (ivEnd > ivStart) total += ivEnd - ivStart;
+    }
+    if (s.inShelter && s.shelterStartMs !== null) {
+      const ivStart = Math.max(s.shelterStartMs, from);
+      const ivEnd   = Math.min(Date.now(),        to);
+      if (ivEnd > ivStart) total += ivEnd - ivStart;
+    }
+    return total;
+  }
+
+  function processEventForShelter(type, data, zoneEns, eventTimeMs) {
+    if (type === 'ALERT' && !data.isDrill) {
+      zoneEns.forEach(zEn => {
+        const s = getShelterState(zEn);
+        if (!s.inShelter) {
+          s.inShelter      = true;
+          s.shelterStartMs = eventTimeMs;
+        }
+      });
+    } else if (type === 'SYSTEM_MESSAGE') {
+      const isClear = (data.titleHe || '').includes('יציאה מהמרחב המוגן')
+                   || (data.bodyHe  || '').includes('יציאה מהמרחב המוגן')
+                   || (data.titleEn || '').toLowerCase().includes('leaving the protected space')
+                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space');
+      if (isClear) {
+        zoneEns.forEach(zEn => {
+          const s = getShelterState(zEn);
+          if (s.inShelter) {
+            const duration = eventTimeMs - s.shelterStartMs;
+            if (duration > 0) s.intervals.push({ start: s.shelterStartMs, end: eventTimeMs });
+            s.inShelter      = false;
+            s.shelterStartMs = null;
+          }
+        });
+      }
+    }
+  }
+
+  function rebuildShelterState() {
+    shelterState.clear();
+    const rows = [...tbody.querySelectorAll('tr[data-time]')];
+    // process in chronological order (oldest first)
+    rows.sort((a, b) => Number(a.dataset.time) - Number(b.dataset.time));
+    rows.forEach(tr => {
+      const zoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
+      processEventForShelter(tr._type, tr._data, zoneEns, Number(tr.dataset.time) * 1000);
+    });
+    updateShelterMeter();
+  }
+
+  function shelterCardHTML(zEn) {
+    const s        = shelterState.get(zEn);
+    const areaName = lang === 'he' ? (zoneEnToZoneHe[zEn] || zEn) : zEn;
+    const inShelter = s && s.inShelter;
+    const total     = totalShelterMs(zEn);
+
+    const timerHTML = total > 0 || inShelter
+      ? `<div class="shelter-sub">${t('shelter_total')}</div>
+         <div class="shelter-timer">${formatDuration(total)}</div>`
+      : '';
+
+    return `<div class="shelter-card ${inShelter ? 'shelter-in' : 'shelter-out'}" data-zone="${zEn}">
+      <div class="shelter-indicator"></div>
+      <div class="shelter-info">
+        <div class="shelter-status">${t(inShelter ? 'shelter_in' : 'shelter_out')}</div>
+        <div class="shelter-area">${areaName}</div>
+        ${timerHTML}
+      </div>
+    </div>`;
+  }
+
+  function updateShelterMeter() {
+    if (activeAreasEn.size === 0) {
+      shelterMeterEl.style.display = 'none';
+      shelterMeterEl.innerHTML = '';
+      return;
+    }
+    shelterMeterEl.style.display = 'block';
+    shelterMeterEl.innerHTML =
+      `<div class="shelter-cards-wrap">${[...activeAreasEn].map(shelterCardHTML).join('')}</div>`;
   }
 
   function resolveCityIds(ids) {
