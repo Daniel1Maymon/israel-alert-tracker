@@ -14,6 +14,8 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;   /* prevent page-level horizontal scroll */
+      width: 100%;
     }
 
     /* ── header ── */
@@ -75,6 +77,7 @@
     main {
       flex: 1;
       overflow-y: auto;
+      overflow-x: auto;
       padding: 16px 20px;
     }
 
@@ -313,6 +316,25 @@
     @media (max-width: 639px) {
       #area-filter { display: none; }
       #area-dropdown-wrap { display: block; }
+
+      /* header: hide social links to free up space */
+      #credits { display: none; }
+
+      /* reduce horizontal padding throughout */
+      header { padding: 10px 12px; }
+      #toolbar, #area-dropdown-wrap, #shelter-meter { padding: 8px 12px; }
+      main { padding: 8px 8px; }
+
+      /* hide low-priority table columns */
+      td.col-num,     th.num                       { display: none; }
+      td.col-elapsed, th[data-i18n="col-elapsed"]  { display: none; }
+      td.col-source,  th[data-i18n="col-source"]   { display: none; }
+      td.col-areas,   th[data-i18n="col-areas"]    { display: none; }
+
+      /* shrink remaining fixed columns so cities gets the space */
+      td.col-type { width: 80px; }
+      td.col-time { white-space: normal; width: 80px; }
+
     }
 
     /* ── shelter meter ── */
@@ -323,7 +345,7 @@
       flex-shrink: 0;
     }
     .shelter-card {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 14px;
       padding: 10px 18px;
@@ -359,7 +381,11 @@
       letter-spacing: 1px; color: #f44336;
     }
     .shelter-sub { font-size: .73rem; color: #888; }
-    .shelter-cards-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+    .shelter-cards-wrap {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+    }
 
     /* ── pagination ── */
     #pagination {
