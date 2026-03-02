@@ -327,13 +327,12 @@
 
       /* hide low-priority table columns */
       td.col-num,     th.num                       { display: none; }
-      td.col-elapsed, th[data-i18n="col-elapsed"]  { display: none; }
       td.col-source,  th[data-i18n="col-source"]   { display: none; }
       td.col-areas,   th[data-i18n="col-areas"]    { display: none; }
 
       /* shrink remaining fixed columns so cities gets the space */
       td.col-type { width: 80px; }
-      td.col-time { white-space: normal; width: 80px; }
+      td.col-time { width: 70px; }
 
     }
 
@@ -618,8 +617,7 @@
     else if (cur === 'disconnected') statusText.textContent = t('disconnected');
     else statusText.textContent = t('connecting');
 
-    // update total
-    if (counter > 0) totalEl.textContent = t('alerts', counter);
+    // total is updated by filterAndPage after every render
 
     // update search placeholder
     searchEl.placeholder = t('search_placeholder');
@@ -695,7 +693,8 @@
   // ── time format ──────────────────────────────────────────────────────────
   function fmt(unixTs) {
     return new Date(Number(unixTs) * 1000)
-      .toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour12: false });
+      .toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour12: false,
+        hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   // ── render the content cell of a row (language-aware) ───────────────────
@@ -728,12 +727,10 @@
       badge.textContent = t('badge_warning');
 
       const titleKey  = I18N[lang].msg_key.title;
-      const bodyKey   = I18N[lang].msg_key.body;
       const cityIds   = typeof data.citiesIds === 'string'
                           ? JSON.parse(data.citiesIds) : (data.citiesIds || []);
       const cityNames = resolveCityIds(cityIds);
       cell.innerHTML = `<span class="msg-title">${data[titleKey] || ''}</span>
-                        <div class="msg-body">${data[bodyKey] || ''}</div>
                         ${cityNames ? `<div class="cities-scroll" style="margin-top:4px">${cityNames}</div>` : ''}`;
       tr.dataset.citiesText = cityNames.toLowerCase();
       // use server-provided zone_en if already set, fall back to client-side resolution
@@ -758,7 +755,6 @@
 
     emptyRow.style.display = 'none';
     counter++;
-    totalEl.textContent = t('alerts', counter);
 
     const isDrill    = type === 'ALERT' && data.isDrill;
     const badgeClass = isDrill ? 'badge-drill' : type === 'ALERT' ? 'badge-alert' : 'badge-warning';
@@ -812,12 +808,18 @@
   }
 
   // ── search + pagination ───────────────────────────────────────────────────
-  const PAGE_SIZE = 10;
+  const MOBILE_MAX = 10;   // max events shown on mobile
   let currentPage = 1;
+
+  function isMobileView() {
+    return window.matchMedia('(max-width: 639px)').matches;
+  }
 
   function filterAndPage(query) {
     const q = query.trim().toLowerCase();
     const allRows = [...tbody.querySelectorAll('tr[data-time]')];
+    const mobile   = isMobileView();
+    const pageSize = mobile ? 1 : 10;
 
     const matching = allRows.filter(tr => {
       const textMatch = !q || (tr.dataset.citiesText || '').includes(q);
@@ -826,20 +828,23 @@
       return textMatch && areaMatch;
     });
 
-    const totalPages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+    // on mobile cap to the MOBILE_MAX most-recent events
+    const visible = mobile ? matching.slice(0, MOBILE_MAX) : matching;
+
+    const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
     currentPage = Math.min(currentPage, totalPages);
 
-    const start    = (currentPage - 1) * PAGE_SIZE;
-    const pageSet  = new Set(matching.slice(start, start + PAGE_SIZE));
+    const start   = (currentPage - 1) * pageSize;
+    const pageSet = new Set(visible.slice(start, start + pageSize));
     allRows.forEach(tr => { tr.style.display = pageSet.has(tr) ? '' : 'none'; });
 
     noResultsRow.style.display = matching.length === 0 ? '' : 'none';
-    renderPagination(matching.length, totalPages);
+    renderPagination(visible.length, totalPages, pageSize);
   }
 
-  function renderPagination(total, totalPages) {
+  function renderPagination(total, totalPages, pageSize) {
     const el = document.getElementById('pagination');
-    if (total <= PAGE_SIZE) { el.innerHTML = ''; return; }
+    if (total <= pageSize) { el.innerHTML = ''; return; }
 
     const label = lang === 'he'
       ? `עמוד ${currentPage} מתוך ${totalPages} (${total} תוצאות)`
@@ -890,6 +895,7 @@
       });
       // Fetch server-computed shelter state for pre-selected areas
       fetchShelterState();
+      fetchCount();
     });
 
   // Returns stable English zone names for a row (used for filtering & knownAreas).
@@ -1006,6 +1012,7 @@
     localStorage.setItem('activeAreasEn', JSON.stringify([...activeAreasEn]));
     renderAreaChips();
     fetchShelterState();   // fetch server-computed intervals for the new selection
+    fetchCount();
     currentPage = 1;
     filterAndPage(searchEl.value);
   }
@@ -1090,6 +1097,15 @@
 
   // Fetch pre-computed shelter state from server for all currently active areas.
   // Falls back to updateShelterMeter() on error (shows whatever is in local shelterState).
+  function fetchCount() {
+    const zonesParam = activeAreasEn.size > 0 ? [...activeAreasEn].join('|') : '';
+    const url = zonesParam ? `/count?zones=${encodeURIComponent(zonesParam)}` : '/count';
+    fetch(url)
+      .then(r => r.json())
+      .then(d => { totalEl.textContent = t('alerts', d.count); })
+      .catch(() => {});
+  }
+
   function fetchShelterState() {
     if (activeAreasEn.size === 0) { updateShelterMeter(); return; }
     const zonesParam = [...activeAreasEn].join('|');
@@ -1185,6 +1201,7 @@
               try { return Number(JSON.parse(r.raw_data).data.time); } catch { return 0; }
             }));
           fetchShelterState();   // initial shelter state from server after history loads
+          fetchCount();
         }
       })
       .catch(() => setStatus('disconnected'));

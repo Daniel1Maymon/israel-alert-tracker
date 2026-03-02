@@ -100,6 +100,32 @@ def history():
     return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
 
+@app.route("/count")
+def count():
+    """Return total alert+warning count, optionally filtered by zone(s).
+
+    ?zones=<zone_en>|<zone_en>  — pipe-separated; omit for global total
+    """
+    zones_param = request.args.get("zones", "")
+    zone_ens    = [z.strip() for z in zones_param.split("|") if z.strip()]
+
+    with sqlite3.connect(DB_PATH) as conn:
+        if zone_ens:
+            # zone_en may contain pipe-joined values (e.g. "Dan|Sharon|Yarkon")
+            # match if the zone appears anywhere in the pipe-delimited string
+            conditions = " OR ".join(
+                ["('|' || zone_en || '|') LIKE ?"] * len(zone_ens)
+            )
+            params = [f"%|{z}|%" for z in zone_ens]
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM alerts WHERE {conditions}", params
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()
+
+    return json.dumps({"count": row[0]}, ensure_ascii=False)
+
+
 @app.route("/shelter")
 def shelter():
     """Return pre-computed shelter intervals for one or more zones.
