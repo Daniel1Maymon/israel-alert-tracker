@@ -928,7 +928,7 @@
   }
 
   // ── area filter ──────────────────────────────────────────────────────────
-  let activeAreasEn = new Set(JSON.parse(localStorage.getItem('activeAreasEn') || '[]'));
+  let activeAreasEn = new Set(JSON.parse(localStorage.getItem('activeAreasEn') || '["Dan"]'));
   let knownAreas    = new Map();   // zone_en -> {zone_en, zone}
 
   function renderAreaChips() {
