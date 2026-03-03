@@ -780,10 +780,11 @@
 
     renderRowContent(tr, type, data);
 
-    // update shelter state machine for this event
-    const eventZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
-    processEventForShelter(type, data, eventZoneEns, receivedAt);
-    if (eventZoneEns.some(z => activeAreasEn.has(z))) updateShelterMeter();
+    // for live events touching an active area, re-fetch server shelter state
+    if (isLive) {
+      const eventZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
+      if (eventZoneEns.some(z => activeAreasEn.has(z))) fetchShelterState();
+    }
 
     const elCell = tr.querySelector('.col-elapsed');
     elCell.textContent = elapsedStr(receivedAt);
@@ -1044,12 +1045,6 @@
   // Storing raw intervals allows future filtering by any time window (last 1h, 6h, etc.)
   const shelterState = new Map();
 
-  function getShelterState(zoneEn) {
-    if (!shelterState.has(zoneEn))
-      shelterState.set(zoneEn, { inShelter: false, shelterStartMs: null, intervals: [] });
-    return shelterState.get(zoneEn);
-  }
-
   // Returns total ms in shelter within [from, to].
   // Call with no args for all-time total. Pass from/to (ms) for any time window.
   function totalShelterMs(zEn, from = 0, to = Infinity) {
@@ -1067,36 +1062,6 @@
       if (ivEnd > ivStart) total += ivEnd - ivStart;
     }
     return total;
-  }
-
-  function processEventForShelter(type, data, zoneEns, eventTimeMs) {
-    if (type === 'ALERT' && !data.isDrill) {
-      zoneEns.forEach(zEn => {
-        const s = getShelterState(zEn);
-        if (!s.inShelter) {
-          s.inShelter      = true;
-          s.shelterStartMs = eventTimeMs;
-        }
-      });
-    } else if (type === 'SYSTEM_MESSAGE') {
-      const isClear = (data.titleHe || '').includes('יציאה מהמרחב המוגן')
-                   || (data.bodyHe  || '').includes('יציאה מהמרחב המוגן')
-                   || (data.titleHe || '').includes('סיום אירוע')
-                   || (data.titleEn || '').toLowerCase().includes('leaving the protected space')
-                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space')
-                   || (data.titleEn || '').toLowerCase().includes('incident ended');
-      if (isClear) {
-        zoneEns.forEach(zEn => {
-          const s = getShelterState(zEn);
-          if (s.inShelter) {
-            const duration = eventTimeMs - s.shelterStartMs;
-            if (duration > 0) s.intervals.push({ start: s.shelterStartMs, end: eventTimeMs });
-            s.inShelter      = false;
-            s.shelterStartMs = null;
-          }
-        });
-      }
-    }
   }
 
   // Fetch pre-computed shelter state from server for all currently active areas.
