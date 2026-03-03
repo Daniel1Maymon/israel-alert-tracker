@@ -2,6 +2,8 @@
 
 Real-time dashboard for Israeli rocket alerts (צבע אדום — "Tzeva Adom"). Connects to the tzevaadom.co.il WebSocket stream, persists every alert to a local SQLite database, and displays them in a live-updating web UI.
 
+# https://web-production-1a4f1.up.railway.app/ #
+
 ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Flask](https://img.shields.io/badge/Flask-latest-lightgrey) ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
