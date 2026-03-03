@@ -373,13 +373,16 @@
     .shelter-status { font-size: .9rem; font-weight: 700; }
     .shelter-in  .shelter-status { color: #ef9a9a; }
     .shelter-out .shelter-status { color: #a5d6a7; }
-    .shelter-area { font-size: .73rem; color: #666; }
+    .shelter-area { font-size: .85rem; font-weight: 700; color: #666; }
     .shelter-timer {
       font-size: 1.25rem; font-weight: 700;
       font-family: monospace; font-variant-numeric: tabular-nums;
       letter-spacing: 1px; color: #f44336;
     }
-    .shelter-sub { font-size: .73rem; color: #888; }
+    .shelter-sub {
+      font-size: .73rem; color: #888;
+      display: flex; flex-direction: row; align-items: center; gap: 5px;
+    }
     .shelter-cards-wrap {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -543,9 +546,9 @@
       banner_warn:    (title)  => `⚠️ ${title || 'System Message'}`,
       msg_key:        { title: 'titleEn', body: 'bodyEn' },
       lang_switch:    'עברית',
-      shelter_in:     'In Shelter',
-      shelter_out:    'Not in Shelter',
-      shelter_total:  'Total shelter time',
+      shelter_in:     'Status: In Shelter',
+      shelter_out:    'Status: Not in Shelter',
+      shelter_total:  'Total shelter time since operation start:',
     },
     he: {
       title:       'מוניטור צבע אדום',
@@ -570,9 +573,9 @@
       banner_warn:    (title)  => `⚠️ ${title || 'הודעת מערכת'}`,
       msg_key:        { title: 'titleHe', body: 'bodyHe' },
       lang_switch:    'English',
-      shelter_in:     'במרחב מוגן',
-      shelter_out:    'לא במרחב מוגן',
-      shelter_total:  'סה"כ זמן במרחב מוגן',
+      shelter_in:     'סטטוס: במרחב מוגן',
+      shelter_out:    'סטטוס: לא במרחב מוגן',
+      shelter_total:  'סה״כ הזמן במרחב מוגן מתחילת המבצע:',
     },
   };
 
@@ -1100,16 +1103,15 @@
     const total     = totalShelterMs(zEn);
 
     const timerHTML = total > 0 || inShelter
-      ? `<div class="shelter-sub">${t('shelter_total')}</div>
-         <div class="shelter-timer">${formatDuration(total)}</div>`
+      ? `<div class="shelter-timer">${formatDuration(total)}</div>`
       : '';
 
     return `<div class="shelter-card ${inShelter ? 'shelter-in' : 'shelter-out'}" data-zone="${zEn}">
-      <div class="shelter-indicator"></div>
       <div class="shelter-info">
-        <div class="shelter-status">${t(inShelter ? 'shelter_in' : 'shelter_out')}</div>
-        <div class="shelter-area">${areaName}</div>
+        <div class="shelter-status">${t('shelter_total')}</div>
         ${timerHTML}
+        <div class="shelter-area">${areaName}</div>
+        <div class="shelter-sub"><div class="shelter-indicator"></div>${t(inShelter ? 'shelter_in' : 'shelter_out')}</div>
       </div>
     </div>`;
   }
