@@ -13,10 +13,14 @@ time so that zone information is stored durably alongside the raw event.
 """
 
 import json
+import os
 from typing import Any, Dict
 from urllib.request import urlopen
 
 from config import CITIES_URL
+
+# Path to the bundled cities.json shipped with the repo.
+_BUNDLED = os.path.join(os.path.dirname(__file__), "cities.json")
 
 # ---------------------------------------------------------------------------
 # In-memory lookup tables (populated by load_cities on startup)
@@ -30,38 +34,41 @@ city_lookup: Dict[int, Dict[str, Any]] = {}
 name_to_zone: Dict[str, str] = {}
 
 
+def _build_lookups(cities: list) -> None:
+    global city_lookup, name_to_zone
+    city_lookup = {c["id"]: c for c in cities if c.get("id")}
+    name_to_zone = {
+        c["name"]: c["zone_en"]
+        for c in cities
+        if c.get("name") and c.get("zone_en")
+    }
+
+
 def load_cities() -> None:
-    """Fetch the cities JSON from GitHub and populate the two lookup tables.
+    """Populate the two lookup tables from bundled file, falling back to URL.
 
-    The JSON is a flat list of city records.  Each record contains at minimum:
-        id       — numeric city identifier used in SYSTEM_MESSAGE events
-        name     — Hebrew city name used in ALERT events
-        zone_en  — English zone name shared by all cities in the same area
-
-    On failure the lookup tables stay empty and zone resolution will silently
-    produce empty strings; alerts are still saved and displayed without zone
-    information.
+    Tries the bundled cities.json first (always available in the repo).
+    Falls back to fetching from GitHub if the file is missing.
+    On total failure the lookup tables stay empty and zone resolution will
+    silently produce empty strings.
     """
     global city_lookup, name_to_zone
 
+    # 1. Try bundled file (fast, no network needed)
+    if os.path.exists(_BUNDLED):
+        try:
+            with open(_BUNDLED, encoding="utf-8") as f:
+                _build_lookups(json.load(f))
+            print(f"[cities] loaded {len(city_lookup)} entries from bundled file", flush=True)
+            return
+        except Exception as exc:
+            print(f"[cities] bundled file error: {exc} — falling back to URL", flush=True)
+
+    # 2. Fall back to remote URL
     try:
         with urlopen(CITIES_URL, timeout=10) as response:
-            cities = json.loads(response.read().decode())
-
-        city_lookup = {
-            c["id"]: c
-            for c in cities
-            if c.get("id")
-        }
-
-        name_to_zone = {
-            c["name"]: c["zone_en"]
-            for c in cities
-            if c.get("name") and c.get("zone_en")
-        }
-
-        print(f"[cities] loaded {len(city_lookup)} entries", flush=True)
-
+            _build_lookups(json.loads(response.read().decode()))
+        print(f"[cities] loaded {len(city_lookup)} entries from URL", flush=True)
     except Exception as exc:
         print(f"[cities] failed to load: {exc}", flush=True)
 
