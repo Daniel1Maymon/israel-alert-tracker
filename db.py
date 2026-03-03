@@ -143,8 +143,10 @@ def _is_exit_message(data: Dict[str, Any]) -> bool:
     return (
         "יציאה מהמרחב המוגן" in (data.get("titleHe") or "")
         or "יציאה מהמרחב המוגן" in (data.get("bodyHe")  or "")
+        or "סיום אירוע"        in (data.get("titleHe") or "")
         or "leaving the protected space" in (data.get("titleEn") or "").lower()
         or "leaving the protected space" in (data.get("bodyEn")  or "").lower()
+        or "incident ended"              in (data.get("titleEn") or "").lower()
     )
 
 

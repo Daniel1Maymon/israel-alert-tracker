@@ -720,8 +720,10 @@
     } else {
       const isClear = (data.titleHe || '').includes('יציאה מהמרחב המוגן')
                    || (data.bodyHe  || '').includes('יציאה מהמרחב המוגן')
+                   || (data.titleHe || '').includes('סיום אירוע')
                    || (data.titleEn || '').toLowerCase().includes('leaving the protected space')
-                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space');
+                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space')
+                   || (data.titleEn || '').toLowerCase().includes('incident ended');
       tr.classList.toggle('is-clear', isClear);
       badge.className = 'badge badge-warning';
       badge.textContent = t('badge_warning');
@@ -1079,8 +1081,10 @@
     } else if (type === 'SYSTEM_MESSAGE') {
       const isClear = (data.titleHe || '').includes('יציאה מהמרחב המוגן')
                    || (data.bodyHe  || '').includes('יציאה מהמרחב המוגן')
+                   || (data.titleHe || '').includes('סיום אירוע')
                    || (data.titleEn || '').toLowerCase().includes('leaving the protected space')
-                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space');
+                   || (data.bodyEn  || '').toLowerCase().includes('leaving the protected space')
+                   || (data.titleEn || '').toLowerCase().includes('incident ended');
       if (isClear) {
         zoneEns.forEach(zEn => {
           const s = getShelterState(zEn);
