@@ -1003,6 +1003,13 @@
         if (c.name  && c.zone_en) nameToZone[c.name] = c;
         if (c.zone_en && c.zone)  zoneEnToZoneHe[c.zone_en] = c.zone;
       });
+      // Pre-populate knownAreas with all zones so the dropdown shows the full list
+      // regardless of which zones appear in the last 100 loaded rows.
+      Object.values(data).forEach(c => {
+        if (c.zone_en && c.zone && !knownAreas.has(c.zone_en))
+          knownAreas.set(c.zone_en, { zone_en: c.zone_en, zone: c.zone });
+      });
+      renderAreaDropdown(areaInputEl.value.trim());
       // Re-render any rows that arrived before city data was ready
       tbody.querySelectorAll('tr[data-time]').forEach(tr => {
         renderRowContent(tr, tr._type, tr._data);
