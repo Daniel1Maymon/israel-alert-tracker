@@ -126,6 +126,43 @@ def count():
     return json.dumps({"count": row[0]}, ensure_ascii=False)
 
 
+@app.route("/search")
+def search():
+    """Full-DB city search.
+
+    ?q=<text>             — substring to match against the cities column
+    ?zones=<zone>|<zone>  — optional zone filter (pipe-separated)
+
+    Returns up to 300 matching rows ordered newest-first.
+    """
+    q           = request.args.get("q", "").strip()
+    zones_param = request.args.get("zones", "")
+    zone_ens    = [z.strip() for z in zones_param.split("|") if z.strip()]
+
+    if not q:
+        return json.dumps([], ensure_ascii=False)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        if zone_ens:
+            conditions = " OR ".join(
+                ["('|' || zone_en || '|') LIKE ?"] * len(zone_ens)
+            )
+            zone_params = [f"%|{z}|%" for z in zone_ens]
+            rows = conn.execute(
+                f"SELECT * FROM alerts WHERE cities LIKE ? AND ({conditions})"
+                " ORDER BY time DESC LIMIT 300",
+                [f"%{q}%"] + zone_params,
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM alerts WHERE cities LIKE ? ORDER BY time DESC LIMIT 300",
+                (f"%{q}%",),
+            ).fetchall()
+
+    return json.dumps([dict(r) for r in rows], ensure_ascii=False)
+
+
 @app.route("/shelter")
 def shelter():
     """Return pre-computed shelter intervals for one or more zones.

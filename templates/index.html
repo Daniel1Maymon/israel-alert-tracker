@@ -714,7 +714,10 @@
         return zone ? `${name} <span class="city-zone">(${zone})</span>` : name;
       }).join(' · ') || '—';
       cell.innerHTML = `<div class="cities-scroll">${names}</div>`;
-      tr.dataset.citiesText = (data.cities || []).join(' ').toLowerCase();
+      tr.dataset.citiesText = (data.cities || []).map(name => {
+        const c = nameToZone[name];
+        return c && c.name_en ? `${name} ${c.name_en}` : name;
+      }).join(' ').toLowerCase();
       // use server-provided zone_en if already set, fall back to client-side resolution
       if (!tr.dataset.areaEn) tr.dataset.areaEn = getZoneEns(type, data).join('|');
       const alertZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
@@ -737,7 +740,7 @@
       const cityNames = resolveCityIds(cityIds);
       cell.innerHTML = `<span class="msg-title">${data[titleKey] || ''}</span>
                         ${cityNames ? `<div class="cities-scroll" style="margin-top:4px">${cityNames}</div>` : ''}`;
-      tr.dataset.citiesText = cityNames.toLowerCase();
+      tr.dataset.citiesText = cityNames.replace(/<[^>]+>/g, ' ').toLowerCase();
       // use server-provided zone_en if already set, fall back to client-side resolution
       if (!tr.dataset.areaEn) tr.dataset.areaEn = getZoneEns(type, data).join('|');
       const sysZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
@@ -750,10 +753,10 @@
   const receivedIds = new Set();   // dedup across SSE + polling
   let _batchMode = false;          // true during initial bulk history load; defers sort+filter
 
-  function addRow(type, data, isLive = true, source = 'tzevaadom', zoneEnStr = '') {
+  function addRow(type, data, isLive = true, source = 'tzevaadom', zoneEnStr = '', searchResult = false) {
     // dedup: same event can arrive via SSE and then again via the next poll
     const nid = data.notificationId;
-    if (nid) {
+    if (nid && !searchResult) {
       if (receivedIds.has(String(nid))) return;
       receivedIds.add(String(nid));
     }
@@ -771,6 +774,7 @@
     tr._type        = type;
     tr._data        = data;
     if (zoneEnStr) tr.dataset.areaEn = zoneEnStr;   // set before renderRowContent
+    if (searchResult) tr.dataset.search = 'true';
 
     tr.innerHTML = `
       <td class="col-num">${counter}</td>
@@ -800,7 +804,7 @@
       filterAndPage(searchEl.value);
     }
 
-    if (isLive) {
+    if (isLive && !searchResult) {
       dot.classList.add('flash');
       setTimeout(() => dot.classList.remove('flash'), 800);
       tr.classList.add('new-flash');
@@ -822,8 +826,10 @@
   }
 
   function filterAndPage(query) {
-    const q = query.trim().toLowerCase();
-    const allRows = [...tbody.querySelectorAll('tr[data-time]')];
+    const q = searchMode ? '' : query.trim().toLowerCase();  // server already filtered
+    const allRows = searchMode
+      ? [...tbody.querySelectorAll('tr[data-time][data-search]')]
+      : [...tbody.querySelectorAll('tr[data-time]:not([data-search])')];
     const mobile   = isMobileView();
     const pageSize = mobile ? 1 : 10;
 
@@ -867,10 +873,52 @@
       document.getElementById('page-next').addEventListener('click', () => { currentPage++; filterAndPage(searchEl.value); });
   }
 
+  let searchMode = false;
+  let _searchDebounce = null;
+
+  function enterSearchMode(q) {
+    tbody.querySelectorAll('tr[data-search]').forEach(tr => tr.remove());
+    const zonesParam = activeAreasEn.size > 0 ? [...activeAreasEn].join('|') : '';
+    const url = '/search?q=' + encodeURIComponent(q) +
+                (zonesParam ? '&zones=' + encodeURIComponent(zonesParam) : '');
+    fetch(url)
+      .then(r => r.json())
+      .then(rows => {
+        searchMode = true;
+        tbody.querySelectorAll('tr[data-time]:not([data-search])').forEach(tr => tr.style.display = 'none');
+        tbody.querySelectorAll('tr[data-search]').forEach(tr => tr.remove());
+        _batchMode = rows.length > 1;
+        rows.forEach(r => {
+          try {
+            const raw = JSON.parse(r.raw_data);
+            addRow(raw.type, raw.data, false, raw.source || r.source || 'tzevaadom', r.zone_en || '', true);
+          } catch {}
+        });
+        _batchMode = false;
+        sortTable();
+        currentPage = 1;
+        filterAndPage('');
+      })
+      .catch(() => {});
+  }
+
+  function exitSearchMode() {
+    tbody.querySelectorAll('tr[data-search]').forEach(tr => tr.remove());
+    searchMode = false;
+    currentPage = 1;
+    filterAndPage(searchEl.value);
+  }
+
   searchEl.addEventListener('input', () => {
     localStorage.setItem('search', searchEl.value);
     currentPage = 1;
-    filterAndPage(searchEl.value);
+    clearTimeout(_searchDebounce);
+    const q = searchEl.value.trim();
+    if (!q) {
+      exitSearchMode();
+      return;
+    }
+    _searchDebounce = setTimeout(() => enterSearchMode(q), 400);
   });
 
   // ── sort ─────────────────────────────────────────────────────────────────
@@ -1020,7 +1068,11 @@
     fetchShelterState();   // fetch server-computed intervals for the new selection
     fetchCount();
     currentPage = 1;
-    filterAndPage(searchEl.value);
+    if (searchMode && searchEl.value.trim()) {
+      enterSearchMode(searchEl.value.trim());
+    } else {
+      filterAndPage(searchEl.value);
+    }
   }
 
   function updateKnownAreas(zoneEns) {
@@ -1205,6 +1257,12 @@
 
   poll();                          // load full history immediately
   setInterval(poll, 2000);         // poll every 2s as SSE fallback
+
+  // if a search was saved, trigger server search after a short delay
+  // (gives history time to load so knownAreas / cityLookup are populated)
+  if (savedSearch.trim()) {
+    setTimeout(() => enterSearchMode(savedSearch.trim()), 1000);
+  }
 </script>
 </body>
 </html>
