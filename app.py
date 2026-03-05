@@ -45,6 +45,12 @@ def stream():
     """
     q: queue.Queue = queue.Queue()
     subscribers.append(q)
+    _visitors_msg = json.dumps({"type": "VISITORS", "data": {"count": len(subscribers)}})
+    for sq in list(subscribers):
+        try:
+            sq.put_nowait(_visitors_msg)
+        except Exception:
+            pass
 
     def generate():
         try:
@@ -57,6 +63,12 @@ def stream():
         except GeneratorExit:
             if q in subscribers:
                 subscribers.remove(q)
+            _visitors_msg = json.dumps({"type": "VISITORS", "data": {"count": len(subscribers)}})
+            for sq in list(subscribers):
+                try:
+                    sq.put_nowait(_visitors_msg)
+                except Exception:
+                    pass
 
     return Response(
         stream_with_context(generate()),
