@@ -167,26 +167,103 @@
     .cities-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
     .city-zone { color: #555; font-size: .75em; }
 
-    /* ── search toolbar ── */
-    #toolbar {
+    /* ── search bar ── */
+    #search-bar {
+      display: flex;
+      gap: 10px;
       padding: 10px 20px;
       background: #141414;
       border-bottom: 1px solid #222;
       flex-shrink: 0;
     }
-    #search {
-      width: 100%;
-      max-width: 360px;
-      padding: 7px 12px;
-      border-radius: 6px;
+    .sw-widget {
+      position: relative;
+      flex: 1;
+      max-width: 380px;
+    }
+    .sw-input-wrap {
+      display: flex;
+      align-items: center;
       border: 1px solid #333;
+      border-radius: 6px;
       background: #1e1e1e;
+      padding: 0 8px;
+    }
+    .sw-input-wrap:focus-within { border-color: #555; }
+    .sw-input-wrap input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
       color: #e0e0e0;
       font-size: .875rem;
-      outline: none;
+      padding: 7px 4px;
+      min-width: 0;
     }
-    #search:focus { border-color: #555; }
-    #search::placeholder { color: #555; }
+    .sw-input-wrap input::placeholder { color: #555; }
+    .sw-clear {
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+      display: none;
+      flex-shrink: 0;
+    }
+    .sw-clear.visible { display: block; }
+    .sw-clear:hover { color: #aaa; }
+    .sw-summary {
+      font-size: .75rem;
+      color: #4caf50;
+      white-space: nowrap;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+    .sw-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 6px;
+      max-height: 240px;
+      overflow-y: auto;
+      z-index: 200;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+    .sw-dropdown.open { display: block; }
+    .sw-dropdown::-webkit-scrollbar { width: 4px; }
+    .sw-dropdown::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    .sw-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: .85rem;
+      color: #aaa;
+      cursor: pointer;
+      border-bottom: 1px solid #252525;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sw-item:last-child { border-bottom: none; }
+    .sw-item:hover { background: #252525; color: #e0e0e0; }
+    .sw-item.checked { color: #fff; background: #2a2a2a; }
+    .sw-check {
+      width: 15px; height: 15px;
+      border-radius: 3px;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem;
+    }
+    .sw-item.checked .sw-check { background: #555; border-color: #777; color: #fff; }
+    .sw-item-en { color: #555; font-size: .78rem; margin-inline-start: 4px; }
 
     #no-results { text-align: center; padding: 40px 0; color: #444; display: none; }
     #empty { text-align: center; padding: 60px 0; color: #444; }
@@ -212,117 +289,17 @@
     #credits a:hover { color: #e0e0e0; }
     #credits svg { width: 15px; height: 15px; fill: currentColor; flex-shrink: 0; }
 
-    /* ── area filter bar ── */
-    #area-filter {
-      padding: 8px 20px;
-      background: #141414;
-      border-bottom: 1px solid #222;
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      flex-shrink: 0;
-    }
-    .area-chip {
-      padding: 3px 10px;
-      border-radius: 12px;
-      border: 1px solid #333;
-      background: #1e1e1e;
-      color: #777;
-      font-size: .72rem;
-      cursor: pointer;
-      transition: background .15s, color .15s, border-color .15s;
-      white-space: nowrap;
-    }
-    .area-chip:hover { background: #2a2a2a; color: #bbb; border-color: #444; }
-    .area-chip.active { background: #2d2d2d; color: #fff; border-color: #777; }
-
-    /* ── area dropdown (mobile only) ── */
-    #area-dropdown-wrap {
-      display: none;
-      padding: 8px 20px;
-      background: #141414;
-      border-bottom: 1px solid #222;
-      flex-shrink: 0;
-    }
-    #area-dropdown-trigger {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 9px 12px;
-      border-radius: 6px;
-      border: 1px solid #333;
-      background: #1e1e1e;
-      color: #e0e0e0;
-      font-size: .875rem;
-      cursor: pointer;
-      text-align: start;
-      outline: none;
-    }
-    #area-dropdown-trigger:focus { border-color: #555; }
-    #area-dropdown-trigger .chevron { transition: transform .2s; flex-shrink: 0; }
-    #area-dropdown-trigger.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: #222; }
-    #area-dropdown-trigger.open .chevron { transform: rotate(180deg); }
-
-    #area-checklist {
-      display: none;
-      flex-direction: column;
-      max-height: 190px;
-      overflow-y: auto;
-      border-radius: 0 0 6px 6px;
-      border: 1px solid #333;
-      border-top: none;
-      background: #1e1e1e;
-      scrollbar-width: thin;
-      scrollbar-color: #444 transparent;
-    }
-    #area-checklist.open { display: flex; }
-    #area-checklist::-webkit-scrollbar { width: 4px; }
-    #area-checklist::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
-    .area-check-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 12px;
-      font-size: .85rem;
-      color: #aaa;
-      cursor: pointer;
-      border-bottom: 1px solid #252525;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .area-check-item:last-child { border-bottom: none; }
-    .area-check-item.checked { color: #fff; background: #2a2a2a; }
-    .area-check-item .check-box {
-      width: 16px; height: 16px;
-      border-radius: 3px;
-      border: 1px solid #555;
-      background: #1e1e1e;
-      flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .area-check-item.checked .check-box {
-      background: #555;
-      border-color: #777;
-    }
-    .area-check-item.checked .check-box::after {
-      content: '✓';
-      font-size: .7rem;
-      color: #fff;
-      line-height: 1;
-    }
-    .area-check-all { border-bottom: 1px solid #333 !important; color: #666; font-size: .78rem; }
-
     @media (max-width: 639px) {
-      #area-filter { display: none; }
-      #area-dropdown-wrap { display: block; }
+      #search-bar { flex-direction: column; gap: 8px; padding: 8px 12px; }
+      .sw-widget { max-width: 100%; }
+      .shelter-cards-wrap { grid-template-columns: 1fr; }
 
       /* header: hide social links to free up space */
       #credits { display: none; }
 
       /* reduce horizontal padding throughout */
       header { padding: 10px 12px; }
-      #toolbar, #area-dropdown-wrap, #shelter-meter { padding: 8px 12px; }
+      #shelter-meter { padding: 8px 12px; }
       main { padding: 8px 8px; }
 
       /* hide low-priority table columns */
@@ -333,7 +310,6 @@
       /* shrink remaining fixed columns so cities gets the space */
       td.col-type { width: 80px; }
       td.col-time { width: 70px; }
-
     }
 
     /* ── shelter meter ── */
@@ -465,20 +441,22 @@
 
 <div id="banner"></div>
 
-<div id="toolbar">
-  <input id="search" type="search" data-i18n-placeholder="search_placeholder" placeholder="Search city…" />
-</div>
-
-<div id="area-filter"></div>
-
-<div id="area-dropdown-wrap">
-  <button id="area-dropdown-trigger">
-    <span id="area-dropdown-label"></span>
-    <svg class="chevron" viewBox="0 0 10 6" width="10" height="6" fill="none">
-      <path d="M1 1l4 4 4-4" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-  </button>
-  <div id="area-checklist"></div>
+<div id="search-bar">
+  <div class="sw-widget" id="city-widget">
+    <div class="sw-input-wrap">
+      <input id="city-input" type="text" autocomplete="off" placeholder="Search city…" />
+      <span class="sw-summary" id="city-summary"></span>
+      <button class="sw-clear" id="city-clear" aria-label="Clear">×</button>
+    </div>
+    <div class="sw-dropdown" id="city-dropdown"></div>
+  </div>
+  <div class="sw-widget" id="area-widget">
+    <div class="sw-input-wrap">
+      <input id="area-input" type="text" autocomplete="off" placeholder="Filter by area…" />
+      <span class="sw-summary" id="area-summary"></span>
+    </div>
+    <div class="sw-dropdown" id="area-dropdown"></div>
+  </div>
 </div>
 
 <div id="shelter-meter" style="display:none"></div>
@@ -538,6 +516,7 @@
       waiting:           'Waiting for alerts…',
       no_results:        'No matching cities',
       search_placeholder:'Search city…',
+      area_placeholder:  'Filter by area…',
       alerts:      (n) => `${n} alert${n !== 1 ? 's' : ''}`,
       badge_alert:  'Alert',
       badge_warning:'Warning',
@@ -565,6 +544,7 @@
       waiting:           'ממתין להתרעות…',
       no_results:        'לא נמצאו ערים תואמות',
       search_placeholder:'חיפוש עיר…',
+      area_placeholder:  'סנן לפי אזור…',
       alerts:      (n) => `${n} התרעות`,
       badge_alert:  'התרעה',
       badge_warning:'אזהרה',
@@ -594,14 +574,15 @@
   const totalEl    = document.getElementById('total');
   const emptyRow   = document.getElementById('empty-row');
   const langBtn    = document.getElementById('lang-btn');
-  const searchEl     = document.getElementById('search');
-  const noResultsRow = document.getElementById('no-results-row');
-  const areaFilterEl       = document.getElementById('area-filter');
-  const areaChecklistEl    = document.getElementById('area-checklist');
-  const areaDropdownWrapEl = document.getElementById('area-dropdown-wrap');
-  const areaDropdownTrigEl = document.getElementById('area-dropdown-trigger');
-  const areaDropdownLblEl  = document.getElementById('area-dropdown-label');
-  const shelterMeterEl     = document.getElementById('shelter-meter');
+  const noResultsRow   = document.getElementById('no-results-row');
+  const cityInputEl    = document.getElementById('city-input');
+  const cityClearEl    = document.getElementById('city-clear');
+  const citySummaryEl  = document.getElementById('city-summary');
+  const cityDropdownEl = document.getElementById('city-dropdown');
+  const areaInputEl    = document.getElementById('area-input');
+  const areaSummaryEl  = document.getElementById('area-summary');
+  const areaDropEl     = document.getElementById('area-dropdown');
+  const shelterMeterEl = document.getElementById('shelter-meter');
 
   // ── language switch ──────────────────────────────────────────────────────
   function applyLang() {
@@ -622,22 +603,25 @@
 
     // total is updated by filterAndPage after every render
 
-    // update search placeholder
-    searchEl.placeholder = t('search_placeholder');
+    // update search placeholders
+    cityInputEl.placeholder = t('search_placeholder');
+    areaInputEl.placeholder = t('area_placeholder');
 
     // re-render every row's content cell
     tbody.querySelectorAll('tr[data-time]').forEach(tr => {
       renderRowContent(tr, tr._type, tr._data);
     });
 
-    // re-render area chips in new language
-    renderAreaChips();
+    // re-render area dropdown in new language
+    renderAreaDropdown(areaInputEl.value.trim());
+    updateAreaSummary();
+    updateCitySummary();
 
     // refresh shelter meter text in new language
     updateShelterMeter();
 
     // re-filter with current search term in new language
-    filterAndPage(searchEl.value);
+    filterAndPage();
   }
 
   langBtn.addEventListener('click', () => {
@@ -667,7 +651,7 @@
       el.textContent = elapsedStr(receivedAt);
     });
     // tick all shelter live timers for areas currently in shelter
-    activeAreasEn.forEach(zEn => {
+    getEffectiveZones().forEach(zEn => {
       const s = shelterState.get(zEn);
       if (s && s.inShelter) {
         const timerEl = shelterMeterEl.querySelector(`.shelter-card[data-zone="${zEn}"] .shelter-timer`);
@@ -790,7 +774,7 @@
     // for live events touching an active area, re-fetch server shelter state
     if (isLive) {
       const eventZoneEns = (tr.dataset.areaEn || '').split('|').filter(Boolean);
-      if (eventZoneEns.some(z => activeAreasEn.has(z))) fetchShelterState();
+      if (eventZoneEns.some(z => getEffectiveZones().has(z))) fetchShelterState();
     }
 
     const elCell = tr.querySelector('.col-elapsed');
@@ -801,7 +785,7 @@
     if (!_batchMode) {
       sortTable();
       if (isLive) currentPage = 1;
-      filterAndPage(searchEl.value);
+      filterAndPage();
     }
 
     if (isLive && !searchResult) {
@@ -825,19 +809,18 @@
     return window.matchMedia('(max-width: 639px)').matches;
   }
 
-  function filterAndPage(query) {
-    const q = searchMode ? '' : query.trim().toLowerCase();  // server already filtered
+  function filterAndPage() {
     const allRows = searchMode
       ? [...tbody.querySelectorAll('tr[data-time][data-search]')]
       : [...tbody.querySelectorAll('tr[data-time]:not([data-search])')];
     const mobile   = isMobileView();
     const pageSize = mobile ? 1 : 10;
 
+    const effectiveZones = getEffectiveZones();
     const matching = allRows.filter(tr => {
-      const textMatch = !q || (tr.dataset.citiesText || '').includes(q);
-      const areaMatch = activeAreasEn.size === 0 ||
-        (tr.dataset.areaEn || '').split('|').some(z => activeAreasEn.has(z));
-      return textMatch && areaMatch;
+      const areaMatch = effectiveZones.size === 0 ||
+        (tr.dataset.areaEn || '').split('|').some(z => effectiveZones.has(z));
+      return areaMatch;
     });
 
     // on mobile cap to the MOBILE_MAX most-recent events
@@ -868,17 +851,40 @@
       <button class="page-btn" id="page-next" ${currentPage === totalPages ? 'disabled' : ''}>&#8250;</button>`;
 
     if (currentPage > 1)
-      document.getElementById('page-prev').addEventListener('click', () => { currentPage--; filterAndPage(searchEl.value); });
+      document.getElementById('page-prev').addEventListener('click', () => { currentPage--; filterAndPage(); });
     if (currentPage < totalPages)
-      document.getElementById('page-next').addEventListener('click', () => { currentPage++; filterAndPage(searchEl.value); });
+      document.getElementById('page-next').addEventListener('click', () => { currentPage++; filterAndPage(); });
+  }
+
+  // ── selected cities (multi-select) ───────────────────────────────────────
+  let selectedCities = new Set(JSON.parse(localStorage.getItem('selectedCities') || '[]'));
+
+  // Effective zones = area dropdown selection ∪ zones from selected cities.
+  // All zone-sensitive functions use this so both sources contribute to
+  // shelter cards, row filtering, and count.
+  function getEffectiveZones() {
+    const zones = new Set(activeAreasEn);
+    selectedCities.forEach(name => {
+      const z = nameToZone[name]?.zone_en;
+      if (z) zones.add(z);
+    });
+    return zones;
+  }
+
+  function updateCitySummary() {
+    citySummaryEl.textContent = selectedCities.size === 0 ? '' :
+      (lang === 'he' ? `${selectedCities.size} נבחרו` : `${selectedCities.size} selected`);
+    cityClearEl.classList.toggle('visible', selectedCities.size > 0);
   }
 
   let searchMode = false;
-  let _searchDebounce = null;
 
-  function enterSearchMode(q) {
+  function enterSearchMode() {
+    const q = [...selectedCities].join('|');
+    if (!q) { exitSearchMode(); return; }
     tbody.querySelectorAll('tr[data-search]').forEach(tr => tr.remove());
-    const zonesParam = activeAreasEn.size > 0 ? [...activeAreasEn].join('|') : '';
+    const zones = getEffectiveZones();
+    const zonesParam = zones.size > 0 ? [...zones].join('|') : '';
     const url = '/search?q=' + encodeURIComponent(q) +
                 (zonesParam ? '&zones=' + encodeURIComponent(zonesParam) : '');
     fetch(url)
@@ -897,28 +903,82 @@
         _batchMode = false;
         sortTable();
         currentPage = 1;
-        filterAndPage('');
+        filterAndPage();
       })
       .catch(() => {});
   }
 
   function exitSearchMode() {
     tbody.querySelectorAll('tr[data-search]').forEach(tr => tr.remove());
+    tbody.querySelectorAll('tr[data-time]:not([data-search])').forEach(tr => tr.style.display = '');
     searchMode = false;
     currentPage = 1;
-    filterAndPage(searchEl.value);
+    filterAndPage();
   }
 
-  searchEl.addEventListener('input', () => {
-    localStorage.setItem('search', searchEl.value);
-    currentPage = 1;
-    clearTimeout(_searchDebounce);
-    const q = searchEl.value.trim();
-    if (!q) {
-      exitSearchMode();
-      return;
+  // ── city search dropdown ──────────────────────────────────────────────────
+  function renderCityDropdown(filter) {
+    cityDropdownEl.innerHTML = '';
+    const names = Object.keys(nameToZone).sort((a, b) => a.localeCompare(b, 'he'));
+    const q = (filter || '').trim();
+    const matched = q
+      ? names.filter(n => n.includes(q) || (nameToZone[n]?.name_en || '').toLowerCase().includes(q.toLowerCase()))
+      : names;
+    matched.slice(0, 120).forEach(name => {
+      const checked = selectedCities.has(name);
+      const en = nameToZone[name]?.name_en || '';
+      const item = document.createElement('div');
+      item.className = 'sw-item' + (checked ? ' checked' : '');
+      item.innerHTML = `<span class="sw-check">${checked ? '✓' : ''}</span><span>${name}</span>${en ? `<span class="sw-item-en">${en}</span>` : ''}`;
+      item.addEventListener('click', e => { e.stopPropagation(); toggleCity(name); });
+      cityDropdownEl.appendChild(item);
+    });
+  }
+
+  function toggleCity(name) {
+    if (selectedCities.has(name)) {
+      selectedCities.delete(name);
+    } else {
+      selectedCities.add(name);
     }
-    _searchDebounce = setTimeout(() => enterSearchMode(q), 400);
+    localStorage.setItem('selectedCities', JSON.stringify([...selectedCities]));
+    renderCityDropdown(cityInputEl.value.trim());
+    updateCitySummary();
+    fetchShelterState();
+    fetchCount();
+    currentPage = 1;
+    if (selectedCities.size > 0) {
+      enterSearchMode();
+    } else {
+      exitSearchMode();
+    }
+  }
+
+  const cityWidgetEl = document.getElementById('city-widget');
+  const areaWidgetEl = document.getElementById('area-widget');
+  cityInputEl.addEventListener('focus', () => {
+    renderCityDropdown(cityInputEl.value.trim());
+    cityDropdownEl.classList.add('open');
+  });
+  cityInputEl.addEventListener('input', () => {
+    renderCityDropdown(cityInputEl.value.trim());
+    cityDropdownEl.classList.add('open');
+  });
+  cityClearEl.addEventListener('click', () => {
+    selectedCities.clear();
+    localStorage.setItem('selectedCities', '[]');
+    cityInputEl.value = '';
+    cityDropdownEl.classList.remove('open');
+    updateCitySummary();
+    fetchShelterState();
+    fetchCount();
+    exitSearchMode();
+  });
+
+  // close dropdowns when clicking outside
+  document.addEventListener('click', e => {
+    if (!cityWidgetEl.contains(e.target)) cityDropdownEl.classList.remove('open');
+    if (!areaWidgetEl.contains(e.target)) areaDropEl.classList.remove('open');
   });
 
   // ── sort ─────────────────────────────────────────────────────────────────
@@ -982,78 +1042,48 @@
   let activeAreasEn = new Set(JSON.parse(localStorage.getItem('activeAreasEn') || '["Dan"]'));
   let knownAreas    = new Map();   // zone_en -> {zone_en, zone}
 
-  function renderAreaChips() {
-    areaFilterEl.innerHTML = '';
-    if (knownAreas.size === 0) { renderAreaDropdown(); return; }
-
-    const allChip = document.createElement('button');
-    allChip.className = 'area-chip' + (activeAreasEn.size === 0 ? ' active' : '');
-    allChip.textContent = t('all');
-    allChip.addEventListener('click', () => toggleArea(null));
-    areaFilterEl.appendChild(allChip);
+  function renderAreaDropdown(filter) {
+    filter = (filter || '').toLowerCase();
+    areaDropEl.innerHTML = '';
 
     const sorted = [...knownAreas.values()].sort((a, b) =>
       (lang === 'he' ? a.zone : a.zone_en).localeCompare(lang === 'he' ? b.zone : b.zone_en)
     );
-    sorted.forEach(area => {
-      const chip = document.createElement('button');
-      chip.className = 'area-chip' + (activeAreasEn.has(area.zone_en) ? ' active' : '');
-      chip.textContent = lang === 'he' ? area.zone : area.zone_en;
-      chip.addEventListener('click', () => toggleArea(area.zone_en));
-      areaFilterEl.appendChild(chip);
-    });
-
-    renderAreaDropdown();
-  }
-
-  function updateDropdownLabel() {
-    if (activeAreasEn.size === 0) {
-      areaDropdownLblEl.textContent = t('all');
-    } else if (activeAreasEn.size === 1) {
-      const zEn = [...activeAreasEn][0];
-      const area = knownAreas.get(zEn);
-      areaDropdownLblEl.textContent = area ? (lang === 'he' ? area.zone : area.zone_en) : zEn;
-    } else {
-      areaDropdownLblEl.textContent = lang === 'he'
-        ? `${activeAreasEn.size} אזורים נבחרו`
-        : `${activeAreasEn.size} areas selected`;
-    }
-  }
-
-  areaDropdownTrigEl.addEventListener('click', () => {
-    const open = areaChecklistEl.classList.toggle('open');
-    areaDropdownTrigEl.classList.toggle('open', open);
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!areaDropdownWrapEl.contains(e.target)) {
-      areaChecklistEl.classList.remove('open');
-      areaDropdownTrigEl.classList.remove('open');
-    }
-  });
-
-  function renderAreaDropdown() {
-    areaChecklistEl.innerHTML = '';
+    const visible = filter
+      ? sorted.filter(a => a.zone.includes(filter) || a.zone_en.toLowerCase().includes(filter))
+      : sorted;
 
     const allItem = document.createElement('div');
-    allItem.className = 'area-check-item area-check-all' + (activeAreasEn.size === 0 ? ' checked' : '');
-    allItem.innerHTML = `<div class="check-box"></div><span>${t('all')}</span>`;
-    allItem.addEventListener('click', () => toggleArea(null));
-    areaChecklistEl.appendChild(allItem);
+    allItem.className = 'sw-item' + (activeAreasEn.size === 0 ? ' checked' : '');
+    allItem.innerHTML = `<span class="sw-check">${activeAreasEn.size === 0 ? '✓' : ''}</span><span>${t('all')}</span>`;
+    allItem.addEventListener('click', e => { e.stopPropagation(); toggleArea(null); });
+    areaDropEl.appendChild(allItem);
 
-    const sorted = [...knownAreas.values()].sort((a, b) =>
-      (lang === 'he' ? a.zone : a.zone_en).localeCompare(lang === 'he' ? b.zone : b.zone_en)
-    );
-    sorted.forEach(area => {
+    visible.forEach(area => {
+      const checked = activeAreasEn.has(area.zone_en);
       const item = document.createElement('div');
-      item.className = 'area-check-item' + (activeAreasEn.has(area.zone_en) ? ' checked' : '');
-      item.innerHTML = `<div class="check-box"></div><span>${lang === 'he' ? area.zone : area.zone_en}</span>`;
-      item.addEventListener('click', () => toggleArea(area.zone_en));
-      areaChecklistEl.appendChild(item);
+      item.className = 'sw-item' + (checked ? ' checked' : '');
+      item.innerHTML = `<span class="sw-check">${checked ? '✓' : ''}</span><span>${lang === 'he' ? area.zone : area.zone_en}</span>`;
+      item.addEventListener('click', e => { e.stopPropagation(); toggleArea(area.zone_en); });
+      areaDropEl.appendChild(item);
     });
 
-    updateDropdownLabel();
+    updateAreaSummary();
   }
+
+  function updateAreaSummary() {
+    areaSummaryEl.textContent = activeAreasEn.size === 0 ? '' :
+      (lang === 'he' ? `${activeAreasEn.size} נבחרו` : `${activeAreasEn.size} selected`);
+  }
+
+  areaInputEl.addEventListener('focus', () => {
+    renderAreaDropdown(areaInputEl.value.trim());
+    areaDropEl.classList.add('open');
+  });
+  areaInputEl.addEventListener('input', () => {
+    renderAreaDropdown(areaInputEl.value.trim());
+    areaDropEl.classList.add('open');
+  });
 
   function toggleArea(zoneEn) {
     if (zoneEn === null) {
@@ -1064,14 +1094,14 @@
       activeAreasEn.add(zoneEn);
     }
     localStorage.setItem('activeAreasEn', JSON.stringify([...activeAreasEn]));
-    renderAreaChips();
-    fetchShelterState();   // fetch server-computed intervals for the new selection
+    renderAreaDropdown(areaInputEl.value.trim());
+    fetchShelterState();
     fetchCount();
     currentPage = 1;
-    if (searchMode && searchEl.value.trim()) {
-      enterSearchMode(searchEl.value.trim());
+    if (searchMode && selectedCities.size > 0) {
+      enterSearchMode();
     } else {
-      filterAndPage(searchEl.value);
+      filterAndPage();
     }
   }
 
@@ -1083,12 +1113,11 @@
         knownAreas.set(zEn, { zone_en: zEn, zone: heZone || zEn });
         changed = true;
       } else if (heZone) {
-        // Cities may have loaded after this zone was first inserted with an English fallback — update it
         const existing = knownAreas.get(zEn);
         if (existing.zone === zEn) { existing.zone = heZone; changed = true; }
       }
     });
-    if (changed) renderAreaChips();
+    if (changed) renderAreaDropdown(areaInputEl.value.trim());
   }
 
   // ── shelter state machine ─────────────────────────────────────────────────
@@ -1122,7 +1151,8 @@
   // Fetch pre-computed shelter state from server for all currently active areas.
   // Falls back to updateShelterMeter() on error (shows whatever is in local shelterState).
   function fetchCount() {
-    const zonesParam = activeAreasEn.size > 0 ? [...activeAreasEn].join('|') : '';
+    const zones = getEffectiveZones();
+    const zonesParam = zones.size > 0 ? [...zones].join('|') : '';
     const url = zonesParam ? `/count?zones=${encodeURIComponent(zonesParam)}` : '/count';
     fetch(url)
       .then(r => r.json())
@@ -1131,8 +1161,9 @@
   }
 
   function fetchShelterState() {
-    if (activeAreasEn.size === 0) { updateShelterMeter(); return; }
-    const zonesParam = [...activeAreasEn].join('|');
+    const zones = getEffectiveZones();
+    if (zones.size === 0) { updateShelterMeter(); return; }
+    const zonesParam = [...zones].join('|');
     fetch(`/shelter?zones=${encodeURIComponent(zonesParam)}`)
       .then(r => r.json())
       .then(serverData => {
@@ -1169,14 +1200,15 @@
   }
 
   function updateShelterMeter() {
-    if (activeAreasEn.size === 0) {
+    const zones = getEffectiveZones();
+    if (zones.size === 0) {
       shelterMeterEl.style.display = 'none';
       shelterMeterEl.innerHTML = '';
       return;
     }
     shelterMeterEl.style.display = 'block';
     shelterMeterEl.innerHTML =
-      `<div class="shelter-cards-wrap">${[...activeAreasEn].map(shelterCardHTML).join('')}</div>`;
+      `<div class="shelter-cards-wrap">${[...zones].map(shelterCardHTML).join('')}</div>`;
   }
 
   function resolveCityIds(ids) {
@@ -1215,7 +1247,7 @@
         if (isBatch) {
           _batchMode = false;
           sortTable();
-          filterAndPage(searchEl.value);
+          filterAndPage();
         }
         if (!historyLoaded) {
           historyLoaded = true;
@@ -1251,17 +1283,15 @@
   evtSource.onerror = () => setStatus('disconnected');
 
   // ── restore state & apply lang on init ──────────────────────────────────
-  const savedSearch = localStorage.getItem('search') || '';
-  if (savedSearch) searchEl.value = savedSearch;
+  updateCitySummary();
   applyLang();
 
   poll();                          // load full history immediately
   setInterval(poll, 2000);         // poll every 2s as SSE fallback
 
-  // if a search was saved, trigger server search after a short delay
-  // (gives history time to load so knownAreas / cityLookup are populated)
-  if (savedSearch.trim()) {
-    setTimeout(() => enterSearchMode(savedSearch.trim()), 1000);
+  // restore city selection after /cities loads (nameToZone needed for zones)
+  if (selectedCities.size > 0) {
+    setTimeout(() => { enterSearchMode(); fetchShelterState(); fetchCount(); }, 1000);
   }
 </script>
 </body>

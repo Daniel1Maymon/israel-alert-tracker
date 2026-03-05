@@ -130,7 +130,7 @@ def count():
 def search():
     """Full-DB city search.
 
-    ?q=<text>             — substring to match against the cities column
+    ?q=<city>|<city>      — pipe-separated city names (OR match against cities column)
     ?zones=<zone>|<zone>  — optional zone filter (pipe-separated)
 
     Returns up to 300 matching rows ordered newest-first.
@@ -138,26 +138,31 @@ def search():
     q           = request.args.get("q", "").strip()
     zones_param = request.args.get("zones", "")
     zone_ens    = [z.strip() for z in zones_param.split("|") if z.strip()]
+    city_names  = [c.strip() for c in q.split("|") if c.strip()]
 
-    if not q:
+    if not city_names:
         return json.dumps([], ensure_ascii=False)
+
+    city_cond   = " OR ".join(["cities LIKE ?"] * len(city_names))
+    city_params = [f"%{c}%" for c in city_names]
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         if zone_ens:
-            conditions = " OR ".join(
+            zone_cond   = " OR ".join(
                 ["('|' || zone_en || '|') LIKE ?"] * len(zone_ens)
             )
             zone_params = [f"%|{z}|%" for z in zone_ens]
             rows = conn.execute(
-                f"SELECT * FROM alerts WHERE cities LIKE ? AND ({conditions})"
+                f"SELECT * FROM alerts WHERE ({city_cond}) AND ({zone_cond})"
                 " ORDER BY time DESC LIMIT 300",
-                [f"%{q}%"] + zone_params,
+                city_params + zone_params,
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM alerts WHERE cities LIKE ? ORDER BY time DESC LIMIT 300",
-                (f"%{q}%",),
+                f"SELECT * FROM alerts WHERE ({city_cond})"
+                " ORDER BY time DESC LIMIT 300",
+                city_params,
             ).fetchall()
 
     return json.dumps([dict(r) for r in rows], ensure_ascii=False)
